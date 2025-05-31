@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "qGjMRBWv/kJ1ClrYZNb481RX+lD0HpwXEQ/f472jFCuT6DUwyIxUFuakh3WERR32QGOmQ2lWZ0jyG4VDfuWirA==",
+  "success": true,
+  "projectFilePath": "D:\\Dev\\Projects\\`TV\\LogoDetect\\LogoDetect\\LogoDetect.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\natev\\.nuget\\packages\\ffmpeg.autogen\\7.1.1\\ffmpeg.autogen.7.1.1.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\mathnet.numerics\\5.0.0\\mathnet.numerics.5.0.0.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\mathnet.numerics.providers.cuda\\5.0.0\\mathnet.numerics.providers.cuda.5.0.0.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\skiasharp\\2.88.7\\skiasharp.2.88.7.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\skiasharp.nativeassets.macos\\2.88.7\\skiasharp.nativeassets.macos.2.88.7.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\skiasharp.nativeassets.win32\\2.88.7\\skiasharp.nativeassets.win32.2.88.7.nupkg.sha512",
+    "C:\\Users\\natev\\.nuget\\packages\\system.commandline\\2.0.0-beta4.22272.1\\system.commandline.2.0.0-beta4.22272.1.nupkg.sha512"
+  ],
+  "logs": []
+}
