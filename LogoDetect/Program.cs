@@ -73,6 +73,8 @@ public class Program
         Console.WriteLine($"Processing video: {input.FullName}");
         Console.WriteLine($"Output EDL file: {outputPath}");
 
+        FFmpegBinariesHelper.RegisterFFmpegBinaries();
+
         using var videoProcessor = new VideoProcessor();
         var imageProcessor = new ImageProcessor();
         var edlGenerator = new EdlGenerator();
