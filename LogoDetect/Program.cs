@@ -73,17 +73,41 @@ public class Program
 
         FFmpegBinariesHelper.RegisterFFmpegBinaries();
 
+        Console.WriteLine("Loading video file...");
         using var videoProcessor = new VideoProcessor(input.FullName);
-        videoProcessor.GenerateLogoReference(Path.ChangeExtension(input.FullName, ".logo.png"));
 
-        // Detect if logo is present for each keyframe
-        var logoDetections = videoProcessor.DetectLogoFrames(logoThreshold);
+        Console.WriteLine("Generating logo reference...");
+        videoProcessor.GenerateLogoReference(
+            Path.ChangeExtension(input.FullName, ".logo.png"),
+            new Progress<double>(p => 
+            {
+                Console.Write($"\rProgress: {p:F1}%");
+                if (p >= 100) Console.WriteLine();
+            })
+        );
+
+        Console.WriteLine("Detecting logo frames...");
+        var logoDetections = videoProcessor.DetectLogoFrames(logoThreshold, new Progress<double>(p => 
+        {
+            Console.Write($"\rProgress: {p:F1}%");
+            if (p >= 100) Console.WriteLine();
+        }));
 
         // Generate segments based on logo detections
+        Console.WriteLine("Generating segments...");
         var segments = videoProcessor.GenerateSegments(logoDetections, minDuration);
-
+        
         // Extend segments to nearest scene changes
-        segments = videoProcessor.ExtendSegmentsToSceneChanges(segments, sceneThreshold);
+        Console.WriteLine($"Extending {segments.Count()} segments to scene changes...");
+        segments = videoProcessor.ExtendSegmentsToSceneChanges(
+            segments,
+            sceneThreshold,
+            new Progress<double>(p => 
+            {
+                Console.Write($"\rProgress: {p:F1}%");
+                if (p >= 100) Console.WriteLine();
+            })
+        );
 
         // Write segments to CSV file
         File.WriteAllLines(outputPath, segments.Select(s => s.ToString()));

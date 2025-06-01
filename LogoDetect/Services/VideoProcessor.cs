@@ -17,7 +17,7 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile = new MediaFile(inputPath);
     }
 
-    public void GenerateLogoReference(string logoPath)
+    public void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
     {
         var duration = _mediaFile.GetDuration();
         var frame = _mediaFile.GetYDataAtTimestamp(0);
@@ -42,6 +42,9 @@ public unsafe class VideoProcessor : IDisposable
                 referenceMatrix = referenceMatrix.Add(edges);
                 framesProcessed++;
             }
+
+            // Report progress as a percentage (0-100)
+            progress?.Report(i / 249.0 * 100);
         }
 
         // Divide by number of frames using hardware acceleration
@@ -57,9 +60,12 @@ public unsafe class VideoProcessor : IDisposable
         using var stream = File.Create(logoPath);
         using var data = logoBitmap.Encode(SKEncodedImageFormat.Png, 100);
         data.SaveTo(stream);
+
+        // Report 100% completion
+        progress?.Report(100);
     }
 
-    public List<(TimeSpan Time, bool HasLogo)> DetectLogoFrames(double logoThreshold)
+    public List<(TimeSpan Time, bool HasLogo)> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
     {
         if (_logoReference == null)
             throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
@@ -71,6 +77,9 @@ public unsafe class VideoProcessor : IDisposable
 
         while (frame != null && frame.Timestamp < duration)
         {
+            // Report progress as a percentage (0-100)
+            progress?.Report((double)frame.Timestamp / duration * 100);
+
             // Detect edges in the current frame using hardware-accelerated matrix operations
             var edges = _imageProcessor.DetectEdges(frame.YData.MatrixData, frame.YData.Width, frame.YData.Height);
             var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edges);
@@ -81,6 +90,9 @@ public unsafe class VideoProcessor : IDisposable
             // Read next frame
             frame = _mediaFile.ReadNextKeyFrame();
         }
+
+        // Report 100% completion
+        progress?.Report(100);
 
         return logoDetections;
     }
@@ -131,14 +143,17 @@ public unsafe class VideoProcessor : IDisposable
 
     public IEnumerable<VideoSegment> ExtendSegmentsToSceneChanges(
         IEnumerable<VideoSegment> segments,
-        double sceneThreshold)
+        double sceneThreshold,
+        IProgress<double>? progress = null)
     {
         var startTimes = segments.Select(s => s.Start).ToList();
         var endTimes = segments.Select(s => s.End).ToList();
+        var totalSegments = startTimes.Count;
+        var processedSegments = 0;
 
         return segments.Select((segment, index) =>
         {
-            // Get previous segement end time
+            // Get previous segment end time
             var previousSegmentEnd = index > 0 ? endTimes[index - 1] : TimeSpan.Zero;
 
             // Search backwards from segment start in 10-second chunks until a scene change is found
@@ -148,7 +163,6 @@ public unsafe class VideoProcessor : IDisposable
                 // No scene change found, use original start time
                 nearestStartChange = segment.Start;
             }
-
 
             // Get next segment start time
             var nextSegmentStart = index < startTimes.Count - 1 ? startTimes[index + 1] : _mediaFile.GetDurationTimeSpan();
@@ -160,6 +174,9 @@ public unsafe class VideoProcessor : IDisposable
                 // No scene change found, use original end time
                 nearestEndChange = segment.End;
             }
+
+            processedSegments++;
+            progress?.Report((double)processedSegments / totalSegments * 100);
 
             return new VideoSegment(nearestStartChange, nearestEndChange);
         });
