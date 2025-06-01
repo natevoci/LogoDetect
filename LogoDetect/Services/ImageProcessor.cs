@@ -2,14 +2,25 @@ using SkiaSharp;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Statistics;
 using System.Runtime.InteropServices;
-
 using MathNet.Numerics;
-using MathNet.Numerics.Providers.Common;
 
 namespace LogoDetect.Services;
 
 public class ImageProcessor
-{    public ImageProcessor()
+{
+    private readonly float[] _sobelX = {
+        -1, 0, 1,
+        -2, 0, 2,
+        -1, 0, 1
+    };
+
+    private readonly float[] _sobelY = {
+        -1, -2, -1,
+         0,  0,  0,
+         1,  2,  1
+    };
+
+    public ImageProcessor()
     {
         // Try to use CUDA provider for MathNet.Numerics if available
         try
@@ -22,116 +33,72 @@ public class ImageProcessor
             Console.WriteLine("CUDA provider not available, using managed provider");
         }
     }
-    private readonly float[] _sobelX = new float[]
-    {
-        -1, 0, 1,
-        -2, 0, 2,
-        -1, 0, 1
-    };
 
-    private readonly float[] _sobelY = new float[]
+    public Matrix<float> DetectEdges(Matrix<float> yData, int width, int height)
     {
-        -1, -2, -1,
-         0,  0,  0,
-         1,  2,  1
-    };
-
-    public SKBitmap DetectEdges(SKBitmap input)
-    {
-        var width = input.Width;
-        var height = input.Height;
-        var output = new SKBitmap(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
+        var result = Matrix<float>.Build.Dense(height, width);
         
-        // Convert to grayscale and apply Sobel operator
-        var grayscale = new byte[width * height];
-        var pixels = input.Pixels;
-        
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            var color = pixels[i];
-            grayscale[i] = (byte)((color.Red * 0.299 + color.Green * 0.587 + color.Blue * 0.114));
-        }
-
-        var gradientMagnitude = new byte[width * height];
-
+        // Create matrices for Sobel operation
         for (int y = 1; y < height - 1; y++)
         {
             for (int x = 1; x < width - 1; x++)
             {
+                // Apply Sobel operators
                 float gx = 0, gy = 0;
-
                 for (int i = -1; i <= 1; i++)
                 {
                     for (int j = -1; j <= 1; j++)
                     {
-                        int pixelIndex = (y + i) * width + (x + j);
-                        float pixelValue = grayscale[pixelIndex];
+                        var val = yData[y + i, x + j];
+                        var kernelIdx = (i + 1) * 3 + (j + 1);
                         
-                        int kernelIndex = (i + 1) * 3 + (j + 1);
-                        gx += pixelValue * _sobelX[kernelIndex];
-                        gy += pixelValue * _sobelY[kernelIndex];
+                        gx += val * _sobelX[kernelIdx];
+                        gy += val * _sobelY[kernelIdx];
                     }
                 }
 
-                float magnitude = (float)Math.Sqrt(gx * gx + gy * gy);
-                gradientMagnitude[y * width + x] = (byte)Math.Min(255, magnitude);
+                // Calculate gradient magnitude
+                result[y, x] = (float)Math.Sqrt((gx * gx) + (gy * gy));
             }
         }
 
-        Marshal.Copy(gradientMagnitude, 0, output.GetPixels(), gradientMagnitude.Length);
-        return output;
-    }
+        return result;    }
 
-    public SKBitmap GenerateLogoReference(SKBitmap[] edgeDetectedFrames)
+    public bool IsSceneChange(byte[] prevYData, byte[] currYData, double threshold)
     {
-        var width = edgeDetectedFrames[0].Width;
-        var height = edgeDetectedFrames[0].Height;
-        var pixelCount = width * height;
-        var accumulator = new double[pixelCount];
+        if (prevYData.Length != currYData.Length) return false;
 
-        foreach (var frame in edgeDetectedFrames)
-        {
-            var pixels = frame.Pixels;
-            for (int i = 0; i < pixelCount; i++)
-            {
-                accumulator[i] += pixels[i].Red; // Since we're using grayscale, we can use any channel
-            }
-        }
-
-        // Calculate average
-        var output = new SKBitmap(width, height, SKColorType.Gray8, SKAlphaType.Opaque);
-        var avgPixels = new byte[pixelCount];
+        // Convert byte arrays to matrices for hardware-accelerated operations
+        var prevMatrix = Matrix<float>.Build.Dense(prevYData.Length, 1, 
+            (i, j) => prevYData[i]);
         
-        for (int i = 0; i < pixelCount; i++)
-        {
-            avgPixels[i] = (byte)(accumulator[i] / edgeDetectedFrames.Length);
-        }
+        var currMatrix = Matrix<float>.Build.Dense(currYData.Length, 1,
+            (i, j) => currYData[i]);
 
-        Marshal.Copy(avgPixels, 0, output.GetPixels(), avgPixels.Length);
-        return output;
+        // Calculate absolute difference using hardware acceleration
+        var diff = prevMatrix.Subtract(currMatrix).PointwiseAbs();
+        var diffSum = diff.Enumerate().Sum();
+
+        return (diffSum / (prevYData.Length * 255.0)) > threshold;
     }
 
-    public double CompareImages(SKBitmap reference, SKBitmap target)
+    public bool IsSceneChange(Matrix<float> prevData, Matrix<float> currData, double threshold)
     {
-        var width = reference.Width;
-        var height = reference.Height;
-        var referencePixels = reference.Pixels;
-        var targetPixels = target.Pixels;
-        
-        var diffSum = 0.0;
-        var pixelCount = width * height;
+        if (prevData.RowCount != currData.RowCount || prevData.ColumnCount != currData.ColumnCount) 
+            return false;
 
-        for (int i = 0; i < pixelCount; i++)
-        {
-            var diff = Math.Abs(referencePixels[i].Red - targetPixels[i].Red);
-            diffSum += diff;
-        }
+        // Calculate absolute difference using hardware acceleration
+        var diff = prevData.Subtract(currData).PointwiseAbs();
+        var diffSum = diff.Enumerate().Sum();
+        var totalPixels = prevData.RowCount * prevData.ColumnCount;
 
-        return diffSum / (pixelCount * 255.0); // Normalize to 0-1 range
+        return (diffSum / (totalPixels * 255.0)) > threshold;
     }
 
-    public bool IsSceneChange(SKBitmap previous, SKBitmap current, double threshold)
+    public float CompareEdgeData(Matrix<float> reference, Matrix<float> edges)
     {
-        return CompareImages(previous, current) > threshold;
+        // Use hardware-accelerated matrix subtraction and element-wise operations
+        var diff = reference.Subtract(edges);
+        return (float)diff.PointwiseAbs().Enumerate().Average();
     }
 }

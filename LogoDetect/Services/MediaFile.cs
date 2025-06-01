@@ -1,0 +1,214 @@
+using FFmpeg.AutoGen;
+using System.Runtime.InteropServices;
+using static FFmpeg.AutoGen.ffmpeg;
+
+namespace LogoDetect.Services;
+
+public unsafe class MediaFile : IDisposable
+{
+    private AVFormatContext* _formatContext;
+    private AVCodecContext* _codecContext;
+    private AVFrame* _frame;
+    private AVPacket* _packet;
+    private int _videoStream = -1;
+    private long _currentTimestamp;
+    private bool _disposed;
+
+    public MediaFile(string inputPath)
+    {
+        InitFFmpeg(inputPath);
+        _frame = av_frame_alloc();
+        _packet = av_packet_alloc();
+    }
+
+    public Frame? ReadNextFrame()
+    {
+        try
+        {
+            while (av_read_frame(_formatContext, _packet) >= 0)
+            {
+                if (_packet->stream_index == _videoStream)
+                {
+                    int response = avcodec_send_packet(_codecContext, _packet);
+                    if (response < 0) continue;
+
+                    response = avcodec_receive_frame(_codecContext, _frame);
+                    if (response < 0) continue;
+
+                    // Extract Y data (luminance) from frame
+                    var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
+                    Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
+
+                    _currentTimestamp = _frame->best_effort_timestamp;
+                    av_packet_unref(_packet);
+                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
+                    return new Frame(yData, _currentTimestamp);
+                }
+                av_packet_unref(_packet);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    public Frame? GetYDataAtTimestamp(long timestamp)
+    {
+        try
+        {
+            av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
+            _currentTimestamp = timestamp;
+        }
+        catch
+        {
+            return null;
+        }
+
+        return ReadNextFrame();
+    }
+
+    public long GetDuration() => _formatContext->duration;
+
+    private unsafe void InitFFmpeg(string inputPath)
+    {
+        _formatContext = avformat_alloc_context();
+        AVFormatContext* formatContext = null;
+        AVDictionary* options = null;
+
+        // Try NVIDIA GPU acceleration first
+        av_dict_set(&options, "hwaccel", "cuda", 0);
+        int result = avformat_open_input(&formatContext, inputPath, null, &options);
+
+        if (result < 0)
+        {
+            // Try Intel QuickSync
+            av_dict_set(&options, "hwaccel", "qsv", 0);
+            result = avformat_open_input(&formatContext, inputPath, null, &options);
+
+            if (result < 0)
+            {
+                // Fall back to software decoding
+                result = avformat_open_input(&formatContext, inputPath, null, null);
+            }
+        }
+
+        _formatContext = formatContext;
+        if (result < 0)
+        {
+            var bufferSize = 1024;
+            var buffer = stackalloc byte[bufferSize];
+            av_strerror(result, buffer, (ulong)bufferSize);
+            throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+        }
+
+        var findStreamsResult = avformat_find_stream_info(_formatContext, null);
+        if (findStreamsResult < 0)
+        {
+            var bufferSize = 1024;
+            var buffer = stackalloc byte[bufferSize];
+            av_strerror(findStreamsResult, buffer, (ulong)bufferSize);
+            throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+        }
+
+        // Find video stream
+        for (var i = 0; i < _formatContext->nb_streams; i++)
+        {
+            if (_formatContext->streams[i]->codecpar->codec_type == AVMediaType.AVMEDIA_TYPE_VIDEO)
+            {
+                _videoStream = i;
+                break;
+            }
+        }
+        if (_videoStream == -1)
+            throw new InvalidOperationException("No video stream found");
+
+        var codecParams = _formatContext->streams[_videoStream]->codecpar;
+        var codec = avcodec_find_decoder(codecParams->codec_id);
+
+        // Try to find hardware accelerated decoder
+        var hwDecoderName = TryGetHardwareDecoderName(codecParams->codec_id);
+        if (hwDecoderName != null)
+        {
+            var hwCodec = avcodec_find_decoder_by_name(hwDecoderName);
+            if (hwCodec != null)
+            {
+                codec = hwCodec;
+            }
+        }
+
+        _codecContext = avcodec_alloc_context3(codec);
+        var paramResult = avcodec_parameters_to_context(_codecContext, codecParams);
+        if (paramResult < 0)
+        {
+            var bufferSize = 1024;
+            var buffer = stackalloc byte[bufferSize];
+            av_strerror(paramResult, buffer, (ulong)bufferSize);
+            throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+        }
+
+        var openResult = avcodec_open2(_codecContext, codec, null);
+        if (openResult < 0)
+        {
+            var bufferSize = 1024;
+            var buffer = stackalloc byte[bufferSize];
+            av_strerror(openResult, buffer, (ulong)bufferSize);
+            throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+        }
+    }
+
+    private string? TryGetHardwareDecoderName(AVCodecID codecId)
+    {
+        var baseCodec = avcodec_find_decoder(codecId);
+        if (baseCodec == null) return null;
+
+        var baseName = Marshal.PtrToStringAnsi((IntPtr)baseCodec->name);
+        if (baseName == null) return null;
+
+        // Check for NVIDIA GPU support
+        var cudaName = $"{baseName}_cuda";
+        if (avcodec_find_decoder_by_name(cudaName) != null)
+            return cudaName;
+
+        // Check for Intel QuickSync support
+        var qsvName = $"{baseName}_qsv";
+        if (avcodec_find_decoder_by_name(qsvName) != null)
+            return qsvName;
+
+        return null;
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            if (_frame != null)
+            {
+                var frame = _frame;
+                av_frame_free(&frame);
+            }
+
+            if (_packet != null)
+            {
+                var packet = _packet;
+                av_packet_free(&packet);
+            }
+
+            if (_codecContext != null)
+            {
+                var codec = _codecContext;
+                avcodec_free_context(&codec);
+            }
+
+            if (_formatContext != null)
+            {
+                var format = _formatContext;
+                avformat_close_input(&format);
+            }
+
+            _disposed = true;
+        }
+    }
+}
