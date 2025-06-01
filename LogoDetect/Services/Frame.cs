@@ -12,6 +12,8 @@ public class Frame
 
     public long Timestamp => _timestamp;
 
+    public TimeSpan TimeSpan => TimeSpanExtensions.FromTimestamp(_timestamp);
+
     public Frame(YData yData, long timestamp)
     {
         _yData = yData;

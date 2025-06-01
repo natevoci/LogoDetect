@@ -21,57 +21,6 @@ public unsafe class MediaFile : IDisposable
         _packet = av_packet_alloc();
     }
 
-    public Frame? ReadNextFrame()
-    {
-        try
-        {
-            while (av_read_frame(_formatContext, _packet) >= 0)
-            {
-                if (_packet->stream_index == _videoStream)
-                {
-                    int response = avcodec_send_packet(_codecContext, _packet);
-                    if (response < 0) continue;
-
-                    response = avcodec_receive_frame(_codecContext, _frame);
-                    if (response < 0) continue;
-
-                    // Extract Y data (luminance) from frame
-                    var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
-                    Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
-
-                    _currentTimestamp = _frame->best_effort_timestamp;
-                    av_packet_unref(_packet);
-                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
-                    return new Frame(yData, _currentTimestamp);
-                }
-                av_packet_unref(_packet);
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
-    }
-
-    public Frame? GetYDataAtTimestamp(long timestamp)
-    {
-        try
-        {
-            av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
-            _currentTimestamp = timestamp;
-        }
-        catch
-        {
-            return null;
-        }
-
-        return ReadNextFrame();
-    }
-
-    public long GetDuration() => _formatContext->duration;
-
     private unsafe void InitFFmpeg(string inputPath)
     {
         _formatContext = avformat_alloc_context();
@@ -159,6 +108,102 @@ public unsafe class MediaFile : IDisposable
         }
     }
 
+    public Frame? ReadNextFrame()
+    {
+        try
+        {
+            while (av_read_frame(_formatContext, _packet) >= 0)
+            {
+                if (_packet->stream_index == _videoStream)
+                {
+                    int response = avcodec_send_packet(_codecContext, _packet);
+                    if (response < 0) continue;
+
+                    response = avcodec_receive_frame(_codecContext, _frame);
+                    if (response < 0) continue;
+
+                    // Extract Y data (luminance) from frame
+                    var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
+                    Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
+
+                    _currentTimestamp = _frame->best_effort_timestamp;
+                    av_packet_unref(_packet);
+                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
+                    return new Frame(yData, _currentTimestamp);
+                }
+                av_packet_unref(_packet);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    public Frame? ReadNextKeyFrame()
+    {
+        try
+        {
+            while (av_read_frame(_formatContext, _packet) >= 0)
+            {
+                if (_packet->stream_index == _videoStream && (_packet->flags & AV_PKT_FLAG_KEY) != 0)
+                {
+                    int response = avcodec_send_packet(_codecContext, _packet);
+                    if (response < 0) continue;
+
+                    response = avcodec_receive_frame(_codecContext, _frame);
+                    if (response < 0) continue;
+
+                    // Extract Y data (luminance) from frame
+                    var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
+                    Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
+
+                    _currentTimestamp = _frame->best_effort_timestamp;
+                    av_packet_unref(_packet);
+                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
+                    return new Frame(yData, _currentTimestamp);
+                }
+                av_packet_unref(_packet);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    public Frame? GetYDataAtTimestamp(long timestamp)
+    {
+        try
+        {
+            av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
+            _currentTimestamp = timestamp;
+        }
+        catch
+        {
+            return null;
+        }
+
+        return ReadNextFrame();
+    }
+
+    public Frame? GetYDataAtTimeSpan(TimeSpan timeSpan)
+    {
+        return GetYDataAtTimeSpan(timeSpan);
+    }
+
+    public long GetDuration() => _formatContext->duration;
+
+    public TimeSpan GetDurationTimeSpan()
+    {
+        var durationInSeconds = _formatContext->duration / (double)AV_TIME_BASE;
+        return TimeSpan.FromSeconds(durationInSeconds);
+    }
+
     private string? TryGetHardwareDecoderName(AVCodecID codecId)
     {
         var baseCodec = avcodec_find_decoder(codecId);
@@ -210,5 +255,18 @@ public unsafe class MediaFile : IDisposable
 
             _disposed = true;
         }
+    }
+}
+
+public static class TimeSpanExtensions
+{
+    public static long ToTimestamp(this TimeSpan timeSpan)
+    {
+        return (long)(timeSpan.TotalSeconds * AV_TIME_BASE);
+    }
+
+    public static TimeSpan FromTimestamp(long timestamp)
+    {
+        return TimeSpan.FromSeconds(timestamp / (double)AV_TIME_BASE);
     }
 }

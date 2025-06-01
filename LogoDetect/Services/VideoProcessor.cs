@@ -62,21 +62,24 @@ public unsafe class VideoProcessor : IDisposable
     public List<(TimeSpan Time, bool HasLogo)> DetectLogoFrames(double logoThreshold)
     {
         if (_logoReference == null)
-            throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first."); var duration = _mediaFile.GetDuration();
+            throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
+            
+        var duration = _mediaFile.GetDuration();
         var logoDetections = new List<(TimeSpan Time, bool HasLogo)>();
 
-        // Process frames at 1-second intervals
-        for (var time = TimeSpan.Zero; time < TimeSpan.FromMilliseconds(duration / 1000); time += TimeSpan.FromSeconds(1))
+        var frame = _mediaFile.GetYDataAtTimestamp(0);
+
+        while (frame != null && frame.Timestamp < duration)
         {
-            var timestamp = (long)(time.TotalSeconds * 1_000_000);
-            var frame = _mediaFile.GetYDataAtTimestamp(timestamp);
-
-            if (frame == null) break;
-
-            // Detect logo presence using hardware-accelerated matrix operations
+            // Detect edges in the current frame using hardware-accelerated matrix operations
             var edges = _imageProcessor.DetectEdges(frame.YData.MatrixData, frame.YData.Width, frame.YData.Height);
             var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edges);
-            logoDetections.Add((time, diff <= logoThreshold));
+
+            // Check if the difference is below the threshold
+            logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));
+
+            // Read next frame
+            frame = _mediaFile.ReadNextKeyFrame();
         }
 
         return logoDetections;
@@ -130,13 +133,33 @@ public unsafe class VideoProcessor : IDisposable
         IEnumerable<VideoSegment> segments,
         double sceneThreshold)
     {
-        return segments.Select(segment =>
+        var startTimes = segments.Select(s => s.Start).ToList();
+        var endTimes = segments.Select(s => s.End).ToList();
+
+        return segments.Select((segment, index) =>
         {
+            // Get previous segement end time
+            var previousSegmentEnd = index > 0 ? endTimes[index - 1] : TimeSpan.Zero;
+
             // Search backwards from segment start in 10-second chunks until a scene change is found
-            TimeSpan nearestStartChange = FindPreviousSceneChange(segment.Start, sceneThreshold);
+            TimeSpan nearestStartChange = FindPreviousSceneChange(segment.Start, previousSegmentEnd, sceneThreshold);
+            if (nearestStartChange == TimeSpan.MinValue)
+            {
+                // No scene change found, use original start time
+                nearestStartChange = segment.Start;
+            }
+
+
+            // Get next segment start time
+            var nextSegmentStart = index < startTimes.Count - 1 ? startTimes[index + 1] : _mediaFile.GetDurationTimeSpan();
 
             // Search forwards from segment end until next scene change
-            var nearestEndChange = FindNextSceneChange(segment.End, sceneThreshold);
+            var nearestEndChange = FindNextSceneChange(segment.End, nextSegmentStart, sceneThreshold);
+            if (nearestEndChange == TimeSpan.MaxValue)
+            {
+                // No scene change found, use original end time
+                nearestEndChange = segment.End;
+            }
 
             return new VideoSegment(nearestStartChange, nearestEndChange);
         });
@@ -147,50 +170,81 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile.Dispose();
     }
 
-    private TimeSpan FindPreviousSceneChange(TimeSpan startTime, double sceneThreshold)
+    private TimeSpan FindPreviousSceneChange(TimeSpan startTime, TimeSpan minTime, double sceneThreshold)
     {
-        Frame? previousFrame = null;
-        var lastSceneChange = startTime;
-
-        // Search backwards in 10-second chunks
-        for (var time = startTime; time >= TimeSpan.Zero; time -= TimeSpan.FromSeconds(1))
+        for (var searchTime = startTime; searchTime >= minTime; )
         {
-            var timestamp = (long)(time.TotalSeconds * 1_000_000);
-            var frame = _mediaFile.GetYDataAtTimestamp(timestamp);
+            var maxTimestamp = searchTime.ToTimestamp();
 
-            if (frame == null) continue;
+            // Search backwards in 10-second chunks
+            searchTime -= TimeSpan.FromSeconds(10);
+            if (searchTime < minTime)
+                searchTime = minTime;
 
-            if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData.MatrixData, frame.YData.MatrixData, sceneThreshold))
+            var previousFrame = _mediaFile.GetYDataAtTimeSpan(searchTime);
+            if (previousFrame == null)
+                continue; // No frame at this time, skip
+
+            Frame? latestSceneChangeFrame = null;
+
+            while (true)
             {
-                lastSceneChange = time;
+                var frame = _mediaFile.ReadNextFrame();
+
+                if (frame == null)
+                    break; // End of video
+
+                if (frame.Timestamp > maxTimestamp)
+                    break; // Stop if we pass the maximum time
+
+                if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData.MatrixData, frame.YData.MatrixData, sceneThreshold))
+                {
+                    latestSceneChangeFrame = frame;
+                }
+
+                previousFrame = frame;
             }
 
-            previousFrame = frame;
+            if (latestSceneChangeFrame != null)
+            {
+                // Found a scene change, return result
+                return latestSceneChangeFrame.TimeSpan;
+            }
         }
 
-        return lastSceneChange;
+        return TimeSpan.MinValue; // No scene change found before minTime
     }
 
-    private TimeSpan FindNextSceneChange(TimeSpan startTime, double sceneThreshold)
+    private TimeSpan FindNextSceneChange(TimeSpan startTime, TimeSpan maxTime, double sceneThreshold)
     {
-        Frame? previousFrame = null;
+        var startTimestamp = startTime.ToTimestamp();
+        var maxTimestamp = maxTime.ToTimestamp();
 
-        for (var time = startTime; true; time += TimeSpan.FromSeconds(1))
+        var previousFrame = _mediaFile.GetYDataAtTimeSpan(startTime);
+        if (previousFrame == null)
+            return startTime; // No frame at start time, return original time
+
+        while (true)
         {
-            var timestamp = (long)(time.TotalSeconds * 1_000_000);
-            var frame = _mediaFile.GetYDataAtTimestamp(timestamp);
-            
-            if (frame == null) break;
+            var frame = _mediaFile.ReadNextFrame();
+
+            if (frame == null)
+                return previousFrame.TimeSpan; // End of video
+
+            if (frame.Timestamp > maxTimestamp)
+                return TimeSpan.MaxValue; // Stop if we exceed the maximum time
+
+            if (frame.Timestamp < startTimestamp)
+                continue; // Skip frames before the start time in case the keyframe that was seeked to is before the start time
 
             if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData.MatrixData, frame.YData.MatrixData, sceneThreshold))
             {
-                return time;
+                // Convert timestamp to TimeSpan
+                return frame.TimeSpan;
             }
 
             previousFrame = frame;
         }
-
-        return startTime; // No scene change found, return original time;
     }
 
 }
