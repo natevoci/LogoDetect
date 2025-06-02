@@ -6,6 +6,13 @@ namespace LogoDetect.Services;
 
 public unsafe class MediaFile : IDisposable
 {
+    private enum HardwareAccelMode
+    {
+        None,
+        Cuda,
+        QuickSync
+    }
+
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
     private AVFrame* _frame;
@@ -13,6 +20,7 @@ public unsafe class MediaFile : IDisposable
     private int _videoStream = -1;
     private long _currentTimestamp;
     private bool _disposed;
+    private HardwareAccelMode _accelMode = HardwareAccelMode.None;
 
     public MediaFile(string inputPath)
     {
@@ -26,21 +34,28 @@ public unsafe class MediaFile : IDisposable
         _formatContext = avformat_alloc_context();
         AVFormatContext* formatContext = null;
         AVDictionary* options = null;
-
+        
         // Try NVIDIA GPU acceleration first
         av_dict_set(&options, "hwaccel", "cuda", 0);
         int result = avformat_open_input(&formatContext, inputPath, null, &options);
-
-        if (result < 0)
+        if (result >= 0)
+        {
+            _accelMode = HardwareAccelMode.Cuda;
+        }
+        else
         {
             // Try Intel QuickSync
             av_dict_set(&options, "hwaccel", "qsv", 0);
             result = avformat_open_input(&formatContext, inputPath, null, &options);
-
-            if (result < 0)
+            if (result >= 0)
+            {
+                _accelMode = HardwareAccelMode.QuickSync;
+            }
+            else
             {
                 // Fall back to software decoding
                 result = avformat_open_input(&formatContext, inputPath, null, null);
+                _accelMode = HardwareAccelMode.None;
             }
         }
 
@@ -203,7 +218,7 @@ public unsafe class MediaFile : IDisposable
         var durationInSeconds = _formatContext->duration / (double)AV_TIME_BASE;
         return TimeSpan.FromSeconds(durationInSeconds);
     }
-
+    
     private string? TryGetHardwareDecoderName(AVCodecID codecId)
     {
         var baseCodec = avcodec_find_decoder(codecId);
@@ -212,15 +227,28 @@ public unsafe class MediaFile : IDisposable
         var baseName = Marshal.PtrToStringAnsi((IntPtr)baseCodec->name);
         if (baseName == null) return null;
 
-        // Check for NVIDIA GPU support
-        var cudaName = $"{baseName}_cuda";
-        if (avcodec_find_decoder_by_name(cudaName) != null)
-            return cudaName;
+        // Only check for the decoder matching our current acceleration mode
+        switch (_accelMode)
+        {
+            case HardwareAccelMode.Cuda:
+                // Create dictionary for CUDA codec names
+                var codecLookup = new Dictionary<AVCodecID, string>
+                {
+                    { AVCodecID.AV_CODEC_ID_H264, "h264_cuvid" },
+                    { AVCodecID.AV_CODEC_ID_HEVC, "hevc_cuvid" },
+                    { AVCodecID.AV_CODEC_ID_VP9, "vp9_cuvid" },
+                    { AVCodecID.AV_CODEC_ID_AV1, "av1_cuvid" }
+                };
+                if (codecLookup.TryGetValue(codecId, out var decoderName))
+                {
+                    return avcodec_find_decoder_by_name(decoderName) != null ? decoderName : null;
+                }
+                break;
 
-        // Check for Intel QuickSync support
-        var qsvName = $"{baseName}_qsv";
-        if (avcodec_find_decoder_by_name(qsvName) != null)
-            return qsvName;
+            case HardwareAccelMode.QuickSync:
+                var qsvName = $"{baseName}_qsv";
+                return avcodec_find_decoder_by_name(qsvName) != null ? qsvName : null;
+        }
 
         return null;
     }
