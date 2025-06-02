@@ -34,63 +34,71 @@ public class ImageProcessor
         }
     }
 
-    public Matrix<float> DetectEdges(Matrix<float> yData, int width, int height)
+    public YData DetectEdges(YData input)
     {
-        var result = Matrix<float>.Build.Dense(height, width);
-        
-        // Create matrices for Sobel operation
-        for (int y = 1; y < height - 1; y++)
-        {
-            for (int x = 1; x < width - 1; x++)
-            {
-                // Apply Sobel operators
-                float gx = 0, gy = 0;
-                for (int i = -1; i <= 1; i++)
-                {
-                    for (int j = -1; j <= 1; j++)
-                    {
-                        var val = yData[y + i, x + j];
-                        var kernelIdx = (i + 1) * 3 + (j + 1);
-                        
-                        gx += val * _sobelX[kernelIdx];
-                        gy += val * _sobelY[kernelIdx];
-                    }
-                }
+        const int distance = 1;
+        const int edgeMargin = 10;
 
-                // Calculate gradient magnitude
-                result[y, x] = (float)Math.Sqrt((gx * gx) + (gy * gy));
-            }
+        var yData = input.MatrixData;
+
+        // Create padded matrix with zeros around the edges to handle boundaries
+        var padded = Matrix<float>.Build.Dense(yData.RowCount + (distance * 2), yData.ColumnCount + (distance * 2));
+        padded.SetSubMatrix(distance, distance, yData);
+
+        // Create shifted matrices for gradient calculation (these operations run on GPU when available)
+        var rightShift = padded.SubMatrix(distance, yData.RowCount, distance * 2, yData.ColumnCount);
+        var downShift = padded.SubMatrix(distance * 2, yData.RowCount, distance, yData.ColumnCount);
+        var centerRegion = padded.SubMatrix(distance, yData.RowCount, distance, yData.ColumnCount);
+
+
+        // Calculate X gradient using hardware acceleration
+        var dx = rightShift.Subtract(centerRegion);
+
+        // Calculate Y gradient using hardware acceleration
+        var dy = downShift.Subtract(centerRegion);
+
+        var output = dx.Add(dy)
+            .Divide(2)
+            .Add(byte.MaxValue / 2.0f);
+
+        // Restrict the output values to be in the 0-255 range using hardware acceleration
+        var result = output
+            .PointwiseMaximum(byte.MinValue)
+            .PointwiseMinimum(byte.MaxValue);
+
+        // Set margin pixels around the edges to byte.MaxValue / 2.0f using matrix operations
+        var rowVector = Vector<float>.Build.Dense(result.ColumnCount, byte.MaxValue / 2.0f);
+        var colVector = Vector<float>.Build.Dense(result.RowCount, byte.MaxValue / 2.0f);
+        foreach (var rowIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(result.RowCount - edgeMargin, edgeMargin)))
+        {
+            result.SetRow(rowIndex, rowVector);
+        }
+        foreach (var colIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(result.ColumnCount - edgeMargin, edgeMargin)))
+        {
+            result.SetColumn(colIndex, colVector);
         }
 
-        return result;    }
+        // YData.SaveBitmapToFile(padded, "D:\\temp\\logo\\padded.png");
+        // YData.SaveBitmapToFile(rightShift, "D:\\temp\\logo\\right.png");
+        // YData.SaveBitmapToFile(downShift, "D:\\temp\\logo\\down.png");
+        // YData.SaveBitmapToFile(centerRegion, "D:\\temp\\logo\\center.png");
+        // YData.SaveBitmapToFile(dx, "D:\\temp\\logo\\dx.png");
+        // YData.SaveBitmapToFile(dy, "D:\\temp\\logo\\dy.png");
+        // YData.SaveBitmapToFile(output, "D:\\temp\\logo\\output.png");
+        // YData.SaveBitmapToFile(result, "D:\\temp\\logo\\result.png");
 
-    public bool IsSceneChange(byte[] prevYData, byte[] currYData, double threshold)
-    {
-        if (prevYData.Length != currYData.Length) return false;
-
-        // Convert byte arrays to matrices for hardware-accelerated operations
-        var prevMatrix = Matrix<float>.Build.Dense(prevYData.Length, 1, 
-            (i, j) => prevYData[i]);
-        
-        var currMatrix = Matrix<float>.Build.Dense(currYData.Length, 1,
-            (i, j) => currYData[i]);
-
-        // Calculate absolute difference using hardware acceleration
-        var diff = prevMatrix.Subtract(currMatrix).PointwiseAbs();
-        var diffSum = diff.Enumerate().Sum();
-
-        return (diffSum / (prevYData.Length * 255.0)) > threshold;
+        return new YData(result);
     }
 
-    public bool IsSceneChange(Matrix<float> prevData, Matrix<float> currData, double threshold)
+    public bool IsSceneChange(YData prevData, YData currData, double threshold)
     {
-        if (prevData.RowCount != currData.RowCount || prevData.ColumnCount != currData.ColumnCount) 
+        if (prevData.Width != currData.Width || prevData.Height != currData.Height) 
             return false;
 
         // Calculate absolute difference using hardware acceleration
-        var diff = prevData.Subtract(currData).PointwiseAbs();
+        var diff = prevData.MatrixData.Subtract(currData.MatrixData).PointwiseAbs();
         var diffSum = diff.Enumerate().Sum();
-        var totalPixels = prevData.RowCount * prevData.ColumnCount;
+        var totalPixels = prevData.Width * prevData.Height;
 
         return (diffSum / (totalPixels * 255.0)) > threshold;
     }

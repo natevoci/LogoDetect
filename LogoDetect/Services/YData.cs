@@ -74,4 +74,18 @@ public class YData
             return new YData(data, bitmap.Width, bitmap.Height);
         }
     }
+
+    public static void SaveBitmapToFile(Matrix<float> matrix, string path)
+    {
+        var yData = new YData(matrix);
+        yData.SaveBitmapToFile(path);
+    }
+
+    public void SaveBitmapToFile(string path)
+    {
+        using var bitmap = ToBitmap();
+        using var stream = File.Create(path);
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        data.SaveTo(stream);
+    }
 }

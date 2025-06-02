@@ -20,6 +20,7 @@ public unsafe class VideoProcessor : IDisposable
     public void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
     {
         var duration = _mediaFile.GetDuration();
+        var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
         var frame = _mediaFile.GetYDataAtTimestamp(0);
         if (frame == null)
             return;
@@ -35,11 +36,15 @@ public unsafe class VideoProcessor : IDisposable
         for (int i = 0; i < 250; i++)
         {
             var timestamp = duration * i / 249;
+            var timeSpan = TimeSpanExtensions.FromTimestamp(timestamp);
             frame = _mediaFile.GetYDataAtTimestamp(timestamp);
             if (frame != null)
             {
-                var edges = _imageProcessor.DetectEdges(frame.YData.MatrixData, frame.YData.Width, frame.YData.Height);
-                referenceMatrix = referenceMatrix.Add(edges);
+                frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{timeSpan:hh\\-mm\\-ss}.png"));
+                var edges = _imageProcessor.DetectEdges(frame.YData);
+                // edges.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.png"));
+
+                referenceMatrix = referenceMatrix.Add(edges.MatrixData);
                 framesProcessed++;
             }
 
@@ -56,10 +61,7 @@ public unsafe class VideoProcessor : IDisposable
         _logoReference = new YData(referenceMatrix);
 
         // Convert _logoReference to a bitmap and save to logoPath
-        using var logoBitmap = _logoReference.ToBitmap();
-        using var stream = File.Create(logoPath);
-        using var data = logoBitmap.Encode(SKEncodedImageFormat.Png, 100);
-        data.SaveTo(stream);
+        _logoReference.SaveBitmapToFile(logoPath);
 
         // Report 100% completion
         progress?.Report(100);
@@ -78,11 +80,9 @@ public unsafe class VideoProcessor : IDisposable
         while (frame != null && frame.Timestamp < duration)
         {
             // Report progress as a percentage (0-100)
-            progress?.Report((double)frame.Timestamp / duration * 100);
-
-            // Detect edges in the current frame using hardware-accelerated matrix operations
-            var edges = _imageProcessor.DetectEdges(frame.YData.MatrixData, frame.YData.Width, frame.YData.Height);
-            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edges);
+            progress?.Report((double)frame.Timestamp / duration * 100);            // Detect edges in the current frame using hardware-accelerated matrix operations
+            var edges = _imageProcessor.DetectEdges(frame.YData);
+            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edges.MatrixData);
 
             // Check if the difference is below the threshold
             logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));
@@ -214,7 +214,7 @@ public unsafe class VideoProcessor : IDisposable
                 if (frame.Timestamp > maxTimestamp)
                     break; // Stop if we pass the maximum time
 
-                if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData.MatrixData, frame.YData.MatrixData, sceneThreshold))
+                if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData, frame.YData, sceneThreshold))
                 {
                     latestSceneChangeFrame = frame;
                 }
@@ -254,7 +254,7 @@ public unsafe class VideoProcessor : IDisposable
             if (frame.Timestamp < startTimestamp)
                 continue; // Skip frames before the start time in case the keyframe that was seeked to is before the start time
 
-            if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData.MatrixData, frame.YData.MatrixData, sceneThreshold))
+            if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData, frame.YData, sceneThreshold))
             {
                 // Convert timestamp to TimeSpan
                 return frame.TimeSpan;

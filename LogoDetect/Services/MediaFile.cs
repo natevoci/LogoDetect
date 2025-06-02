@@ -195,7 +195,15 @@ public unsafe class MediaFile : IDisposable
     {
         try
         {
-            av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
+            int ret = av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
+            if (ret < 0)
+            {
+                var bufferSize = 1024;
+                var buffer = stackalloc byte[bufferSize];
+                av_strerror(ret, buffer, (ulong)bufferSize);
+                throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+            }
+
             _currentTimestamp = timestamp;
         }
         catch
