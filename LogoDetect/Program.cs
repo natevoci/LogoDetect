@@ -14,8 +14,8 @@ public class Program
 
         var logoThresholdOption = new Option<double>(
             name: "--logo-threshold",
-            description: "Logo detection threshold (0.0-1.0)",
-            getDefaultValue: () => 0.3);
+            description: "Logo detection threshold (default 1.2)",
+            getDefaultValue: () => 1.2);
 
         var sceneChangeThresholdOption = new Option<double>(
             name: "--scene-change-threshold",
@@ -110,7 +110,7 @@ public class Program
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
         stopwatch.Restart();
-        var segments = videoProcessor.GenerateSegments(logoDetections, minDuration);
+        var segments = videoProcessor.GenerateSegments(logoDetections, logoThreshold, minDuration);
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 

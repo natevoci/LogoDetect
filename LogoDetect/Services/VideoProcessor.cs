@@ -70,8 +70,23 @@ public unsafe class VideoProcessor : IDisposable
     
     public List<LogoDetection> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
     {
+        var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.csv");
+        if (File.Exists(csvFilePath))
+        {
+            var logoDetection = File.ReadAllLines(csvFilePath)
+                .Skip(1) // Skip header
+                .Select(line => line.Split(','))
+                .Select(parts => new LogoDetection(
+                    TimeSpan.Parse(parts[0]),
+                    float.Parse(parts[1])
+                ))
+                .ToList();
+
+            return logoDetection;
+        }
+
         if (_logoReference == null)
-            throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
+                throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
 
         var duration = _mediaFile.GetDuration();
         var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
@@ -132,21 +147,20 @@ public unsafe class VideoProcessor : IDisposable
             var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
 
             // Check if the difference is below the threshold
-            logoDetections.Add(new LogoDetection(frame.TimeSpan, logoDiff, logoDiff <= logoThreshold));
+            logoDetections.Add(new LogoDetection(frame.TimeSpan, logoDiff));
 
             // Read next frame
             frame = _mediaFile.ReadNextFrame();
         }
 
-        // Create debug CSV file
-        var debugFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".debug.csv");
-        using (var writer = new StreamWriter(debugFilePath, false))
+        // Create logodifferences CSV file
+        using (var writer = new StreamWriter(csvFilePath, false))
         {
             writer.WriteLine("TimeSpan,Diff,IsAboveThreshold");
             foreach (var detection in logoDetections)
             {
                 // Write debug information to CSV
-                writer.WriteLine($"{detection.Time:hh\\:mm\\:ss\\.fff},{detection.LogoDiff:F6},{detection.HasLogo}");
+                writer.WriteLine($"{detection.Time:hh\\:mm\\:ss\\.fff},{detection.LogoDiff:F6}");
             }
         }
 
@@ -221,8 +235,9 @@ public unsafe class VideoProcessor : IDisposable
         plot.SavePng(graphFilePath, 2000, 1000);
     }
 
-    public IEnumerable<VideoSegment> GenerateSegments(
+    public List<VideoSegment> GenerateSegments(
         List<LogoDetection> logoDetections,
+        double logoThreshold,
         TimeSpan minDuration)
     {
         var segments = new List<VideoSegment>();
@@ -231,9 +246,10 @@ public unsafe class VideoProcessor : IDisposable
 
         foreach (var frame in logoDetections.OrderBy(f => f.Time))
         {
-            if (frame.HasLogo != lastHadLogo)
+            var hasLogo = frame.LogoDiff >= logoThreshold;
+            if (hasLogo != lastHadLogo)
             {
-                if (frame.HasLogo)
+                if (hasLogo)
                 {
                     // Logo appeared - start of new segment
                     segmentStart = frame.Time;
@@ -248,7 +264,7 @@ public unsafe class VideoProcessor : IDisposable
                     }
                     segmentStart = null;
                 }
-                lastHadLogo = frame.HasLogo;
+                lastHadLogo = hasLogo;
             }
         }
 
@@ -265,8 +281,8 @@ public unsafe class VideoProcessor : IDisposable
         return segments;
     }
 
-    public IEnumerable<VideoSegment> ExtendSegmentsToSceneChanges(
-        IEnumerable<VideoSegment> segments,
+    public List<VideoSegment> ExtendSegmentsToSceneChanges(
+        List<VideoSegment> segments,
         double sceneThreshold,
         IProgress<double>? progress = null)
     {
@@ -274,9 +290,12 @@ public unsafe class VideoProcessor : IDisposable
         var endTimes = segments.Select(s => s.End).ToList();
         var totalSegments = startTimes.Count;
         var processedSegments = 0;
+        var result = new List<VideoSegment>();
 
-        return segments.Select((segment, index) =>
+        for (int index = 0; index < totalSegments; index++)
         {
+            var segment = segments[index];
+
             // Get previous segment end time
             var previousSegmentEnd = index > 0 ? endTimes[index - 1] : TimeSpan.Zero;
 
@@ -302,8 +321,10 @@ public unsafe class VideoProcessor : IDisposable
             processedSegments++;
             progress?.Report((double)processedSegments / totalSegments * 100);
 
-            return new VideoSegment(nearestStartChange, nearestEndChange);
-        });
+            result.Add(new VideoSegment(nearestStartChange, nearestEndChange));
+        }
+
+        return result;
     }
 
     public void Dispose()
@@ -313,12 +334,12 @@ public unsafe class VideoProcessor : IDisposable
 
     private TimeSpan FindPreviousSceneChange(TimeSpan startTime, TimeSpan minTime, double sceneThreshold)
     {
-        for (var searchTime = startTime; searchTime >= minTime; )
+        var earliestTimeLoaded = startTime;
+        
+        for (var searchTime = startTime; searchTime >= minTime;)
         {
-            var maxTimestamp = searchTime.ToTimestamp();
-
-            // Search backwards in 10-second chunks
-            searchTime -= TimeSpan.FromSeconds(10);
+            // Search backwards in 30-second chunks
+            searchTime -= TimeSpan.FromSeconds(30);
             if (searchTime < minTime)
                 searchTime = minTime;
 
@@ -326,6 +347,8 @@ public unsafe class VideoProcessor : IDisposable
             if (previousFrame == null)
                 continue; // No frame at this time, skip
 
+            var firstFrame = previousFrame;
+            
             Frame? latestSceneChangeFrame = null;
 
             while (true)
@@ -335,7 +358,7 @@ public unsafe class VideoProcessor : IDisposable
                 if (frame == null)
                     break; // End of video
 
-                if (frame.Timestamp > maxTimestamp)
+                if (frame.TimeSpan > earliestTimeLoaded)
                     break; // Stop if we pass the maximum time
 
                 if (previousFrame != null && _imageProcessor.IsSceneChange(previousFrame.YData, frame.YData, sceneThreshold))
@@ -351,6 +374,8 @@ public unsafe class VideoProcessor : IDisposable
                 // Found a scene change, return result
                 return latestSceneChangeFrame.TimeSpan;
             }
+
+            earliestTimeLoaded = firstFrame.TimeSpan;
         }
 
         return TimeSpan.MinValue; // No scene change found before minTime

@@ -6,12 +6,10 @@ public class LogoDetection
 {
     public TimeSpan Time { get; }
     public float LogoDiff { get; }
-    public bool HasLogo { get; }
 
-    public LogoDetection(TimeSpan time, float logoDiff, bool hasLogo)
+    public LogoDetection(TimeSpan time, float logoDiff)
     {
         Time = time;
         LogoDiff = logoDiff;
-        HasLogo = hasLogo;
     }
 }

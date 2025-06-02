@@ -249,7 +249,7 @@ public unsafe class MediaFile : IDisposable
 
     public Frame? GetYDataAtTimeSpan(TimeSpan timeSpan)
     {
-        return GetYDataAtTimeSpan(timeSpan);
+        return GetYDataAtTimestamp(timeSpan.ToTimestamp());
     }
 
     public long GetDuration() => _formatContext->duration;
