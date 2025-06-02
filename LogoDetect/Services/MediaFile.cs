@@ -149,7 +149,7 @@ public unsafe class MediaFile : IDisposable
 
                     // Convert timestamp from tbn to AV_TIME_BASE
                     var tbn = _formatContext->streams[_videoStream]->time_base;
-                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den) * AV_TIME_BASE;
+                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den * AV_TIME_BASE);
 
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height);
@@ -174,6 +174,8 @@ public unsafe class MediaFile : IDisposable
             {
                 if (_packet->stream_index == _videoStream && (_packet->flags & AV_PKT_FLAG_KEY) != 0)
                 {
+                    // continue if the video packet is a P or B frame
+
                     int response = avcodec_send_packet(_codecContext, _packet);
                     if (response < 0) continue;
 
@@ -188,7 +190,7 @@ public unsafe class MediaFile : IDisposable
 
                     // Convert timestamp from tbn to AV_TIME_BASE
                     var tbn = _formatContext->streams[_videoStream]->time_base;
-                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den) * AV_TIME_BASE;
+                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den * AV_TIME_BASE);
 
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height);
