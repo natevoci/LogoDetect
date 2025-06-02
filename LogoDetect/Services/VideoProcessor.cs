@@ -7,6 +7,7 @@ namespace LogoDetect.Services;
 
 public unsafe class VideoProcessor : IDisposable
 {
+    private const int MaxFramesInRollingAverage = 30;
     private readonly ImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
     private YData? _logoReference;
@@ -76,13 +77,46 @@ public unsafe class VideoProcessor : IDisposable
         var logoDetections = new List<(TimeSpan Time, bool HasLogo)>();
 
         var frame = _mediaFile.GetYDataAtTimestamp(0);
+        if (frame == null) return logoDetections;
+
+        // Initialize rolling average queue and sum matrix
+        var rollingEdgeMaps = new Queue<Matrix<float>>();
+        var height = frame.YData.Height;
+        var width = frame.YData.Width;
+        var sumMatrix = Matrix<float>.Build.Dense(height, width);
+
+        // Pre-fill the rolling average with MaxFramesInRollingAverage frames with blank edge maps
+        var blankEdgeMap = Matrix<float>.Build.Dense(height, width, byte.MaxValue / 2.0f);
+        for (int i = 0; i < MaxFramesInRollingAverage; i++)
+        {
+            rollingEdgeMaps.Enqueue(blankEdgeMap);
+            sumMatrix = sumMatrix.Add(blankEdgeMap);
+        }
 
         while (frame != null && frame.Timestamp < duration)
         {
             // Report progress as a percentage (0-100)
-            progress?.Report((double)frame.Timestamp / duration * 100);            // Detect edges in the current frame using hardware-accelerated matrix operations
+            progress?.Report((double)frame.Timestamp / duration * 100);
+
+            // Detect edges in the current frame
             var edgeMap = _imageProcessor.DetectEdges(frame.YData);
-            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edgeMap.MatrixData);
+
+            // Add current edge map to rolling average
+            rollingEdgeMaps.Enqueue(edgeMap.MatrixData);
+            sumMatrix = sumMatrix.Add(edgeMap.MatrixData);
+
+            // Remove oldest edge map if we exceed the maximum
+            if (rollingEdgeMaps.Count > MaxFramesInRollingAverage)
+            {
+                var oldestMatrix = rollingEdgeMaps.Dequeue();
+                sumMatrix = sumMatrix.Subtract(oldestMatrix);
+            }
+
+            // Calculate average edge map
+            var averageEdgeMap = sumMatrix.Divide(rollingEdgeMaps.Count);
+
+            // Compare against logo reference
+            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
 
             // Check if the difference is below the threshold
             logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));
