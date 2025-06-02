@@ -35,13 +35,13 @@ public unsafe class VideoProcessor : IDisposable
         // Sample 250 frames evenly spaced throughout the video
         for (int i = 0; i < 250; i++)
         {
-            var timestamp = duration * i / 249;
+            var timestamp = duration * i / 250;
             var timeSpan = TimeSpanExtensions.FromTimestamp(timestamp);
             frame = _mediaFile.GetYDataAtTimestamp(timestamp);
             if (frame != null)
             {
-                frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{timeSpan:hh\\-mm\\-ss}.png"));
                 var edges = _imageProcessor.DetectEdges(frame.YData);
+                // frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{timeSpan:hh\\-mm\\-ss}.png"));
                 // edges.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.png"));
 
                 referenceMatrix = referenceMatrix.Add(edges.MatrixData);
@@ -81,8 +81,8 @@ public unsafe class VideoProcessor : IDisposable
         {
             // Report progress as a percentage (0-100)
             progress?.Report((double)frame.Timestamp / duration * 100);            // Detect edges in the current frame using hardware-accelerated matrix operations
-            var edges = _imageProcessor.DetectEdges(frame.YData);
-            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edges.MatrixData);
+            var edgeMap = _imageProcessor.DetectEdges(frame.YData);
+            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, edgeMap.MatrixData);
 
             // Check if the difference is below the threshold
             logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));

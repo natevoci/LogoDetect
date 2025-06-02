@@ -141,7 +141,14 @@ public unsafe class MediaFile : IDisposable
                     var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
                     Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
 
+                    //
+
                     _currentTimestamp = _frame->best_effort_timestamp;
+
+                    // Convert timestamp from tbn to AV_TIME_BASE
+                    var tbn = _formatContext->streams[_videoStream]->time_base;
+                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den) * AV_TIME_BASE;
+
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height);
                     return new Frame(yData, _currentTimestamp);
@@ -176,6 +183,11 @@ public unsafe class MediaFile : IDisposable
                     Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
 
                     _currentTimestamp = _frame->best_effort_timestamp;
+
+                    // Convert timestamp from tbn to AV_TIME_BASE
+                    var tbn = _formatContext->streams[_videoStream]->time_base;
+                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den) * AV_TIME_BASE;
+
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height);
                     return new Frame(yData, _currentTimestamp);
@@ -193,23 +205,40 @@ public unsafe class MediaFile : IDisposable
 
     public Frame? GetYDataAtTimestamp(long timestamp)
     {
-        try
+        if (timestamp < 0)
         {
-            int ret = av_seek_frame(_formatContext, _videoStream, timestamp, AVSEEK_FLAG_BACKWARD);
-            if (ret < 0)
-            {
-                var bufferSize = 1024;
-                var buffer = stackalloc byte[bufferSize];
-                av_strerror(ret, buffer, (ulong)bufferSize);
-                throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
-            }
-
-            _currentTimestamp = timestamp;
+            throw new ArgumentOutOfRangeException(nameof(timestamp), "Timestamp is out of range for the media file.");
         }
-        catch
+
+        if (timestamp >= GetDuration())
         {
             return null;
         }
+
+        try
+            {
+                // Convert timestamp based on AV_TIME_BASE to stream time base
+                var tbn = _formatContext->streams[_videoStream]->time_base;
+                var streamTimestamp = (long)(timestamp / AV_TIME_BASE * tbn.den / (double)tbn.num);
+
+                int ret = av_seek_frame(_formatContext, _videoStream, streamTimestamp, AVSEEK_FLAG_BACKWARD);
+                if (ret < 0)
+                {
+                    var bufferSize = 1024;
+                    var buffer = stackalloc byte[bufferSize];
+                    av_strerror(ret, buffer, (ulong)bufferSize);
+                    throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
+                }
+
+                // Flush codec buffers to ensure we don't get stale frames
+                avcodec_flush_buffers(_codecContext);
+
+                _currentTimestamp = timestamp;
+            }
+            catch
+            {
+                return null;
+            }
 
         return ReadNextFrame();
     }
@@ -226,7 +255,7 @@ public unsafe class MediaFile : IDisposable
         var durationInSeconds = _formatContext->duration / (double)AV_TIME_BASE;
         return TimeSpan.FromSeconds(durationInSeconds);
     }
-    
+
     private string? TryGetHardwareDecoderName(AVCodecID codecId)
     {
         var baseCodec = avcodec_find_decoder(codecId);
