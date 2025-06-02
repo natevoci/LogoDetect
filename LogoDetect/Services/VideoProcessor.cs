@@ -85,6 +85,11 @@ public unsafe class VideoProcessor : IDisposable
         var width = frame.YData.Width;
         var sumMatrix = Matrix<float>.Build.Dense(height, width);
 
+        // Create debug CSV file
+        var debugFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".debug.csv");
+        using var writer = new StreamWriter(debugFilePath, false);
+        writer.WriteLine("TimeSpan,Diff,IsAboveThreshold");
+
         // Pre-fill the rolling average with MaxFramesInRollingAverage frames with blank edge maps
         var blankEdgeMap = Matrix<float>.Build.Dense(height, width, byte.MaxValue / 2.0f);
         for (int i = 0; i < MaxFramesInRollingAverage; i++)
@@ -117,6 +122,9 @@ public unsafe class VideoProcessor : IDisposable
 
             // Compare against logo reference
             var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
+
+            // Write debug information to CSV
+            writer.WriteLine($"{frame.TimeSpan:hh\\:mm\\:ss\\.fff},{diff:F6},{diff > logoThreshold}");
 
             // Check if the difference is below the threshold
             logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));

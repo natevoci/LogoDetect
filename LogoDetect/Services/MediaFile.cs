@@ -13,6 +13,7 @@ public unsafe class MediaFile : IDisposable
         QuickSync
     }
 
+    public string FilePath { get; }
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
     private AVFrame* _frame;
@@ -24,6 +25,7 @@ public unsafe class MediaFile : IDisposable
 
     public MediaFile(string inputPath)
     {
+        FilePath = inputPath;
         InitFFmpeg(inputPath);
         _frame = av_frame_alloc();
         _packet = av_packet_alloc();
