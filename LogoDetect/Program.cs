@@ -56,7 +56,7 @@ public class Program
 
         return await rootCommand.InvokeAsync(args);
     }
-
+    
     private static void ProcessVideo(
         FileInfo input,
         double logoThreshold,
@@ -64,22 +64,26 @@ public class Program
         TimeSpan minDuration,
         FileInfo? output)
     {
-        if (!input.Exists)
-            throw new FileNotFoundException("Input video file not found", input.FullName);
+        // Normalize the input path to handle mixed slashes
+        var normalizedInputPath = Path.GetFullPath(input.FullName);
+        if (!File.Exists(normalizedInputPath))
+            throw new FileNotFoundException("Input video file not found", normalizedInputPath);
 
-        var outputPath = output?.FullName ?? Path.ChangeExtension(input.FullName, ".csv");
-        Console.WriteLine($"Processing video: {input.FullName}");
+        // Normalize the output path if provided, otherwise create one based on the input path
+        var outputPath = output != null
+            ? Path.GetFullPath(output.FullName)
+            : Path.ChangeExtension(normalizedInputPath, ".csv"); Console.WriteLine($"Processing video: {normalizedInputPath}");
         Console.WriteLine($"Output CSV file: {outputPath}");
 
         FFmpegBinariesHelper.RegisterFFmpegBinaries();
 
         Console.WriteLine("Loading video file...");
-        using var videoProcessor = new VideoProcessor(input.FullName);
+        using var videoProcessor = new VideoProcessor(normalizedInputPath);
 
         Console.WriteLine("Generating logo reference...");
         videoProcessor.GenerateLogoReference(
-            Path.ChangeExtension(input.FullName, ".logo.png"),
-            new Progress<double>(p => 
+            Path.ChangeExtension(normalizedInputPath, ".logo.png"),
+            new Progress<double>(p =>
             {
                 Console.Write($"\rProgress: {p:F1}%");
                 if (p >= 100) Console.WriteLine();
@@ -87,7 +91,7 @@ public class Program
         );
 
         Console.WriteLine("Detecting logo frames...");
-        var logoDetections = videoProcessor.DetectLogoFrames(logoThreshold, new Progress<double>(p => 
+        var logoDetections = videoProcessor.DetectLogoFrames(logoThreshold, new Progress<double>(p =>
         {
             Console.Write($"\rProgress: {p:F1}%");
             if (p >= 100) Console.WriteLine();
@@ -96,13 +100,13 @@ public class Program
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
         var segments = videoProcessor.GenerateSegments(logoDetections, minDuration);
-        
+
         // Extend segments to nearest scene changes
         Console.WriteLine($"Extending {segments.Count()} segments to scene changes...");
         segments = videoProcessor.ExtendSegmentsToSceneChanges(
             segments,
             sceneThreshold,
-            new Progress<double>(p => 
+            new Progress<double>(p =>
             {
                 Console.Write($"\rProgress: {p:F1}%");
                 if (p >= 100) Console.WriteLine();

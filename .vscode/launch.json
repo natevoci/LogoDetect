@@ -11,7 +11,7 @@
             "program": "${workspaceFolder}/LogoDetect/bin/Debug/net8.0/LogoDetect.dll",
             "args": [
                 "--input",
-                "F:\\TV\\Samples\\TS stream short - SD.ts"
+                "${workspaceFolder}/TestSamples/Bluey-SD.mp4"
             ],
         }
 
