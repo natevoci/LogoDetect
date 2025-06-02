@@ -70,10 +70,11 @@ public unsafe class VideoProcessor : IDisposable
     
     public List<LogoDetection> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
     {
+        var logoDetections = new List<LogoDetection>();
         var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.csv");
         if (File.Exists(csvFilePath))
         {
-            var logoDetection = File.ReadAllLines(csvFilePath)
+            logoDetections = File.ReadAllLines(csvFilePath)
                 .Skip(1) // Skip header
                 .Select(line => line.Split(','))
                 .Select(parts => new LogoDetection(
@@ -82,7 +83,7 @@ public unsafe class VideoProcessor : IDisposable
                 ))
                 .ToList();
 
-            return logoDetection;
+            return logoDetections;
         }
 
         if (_logoReference == null)
@@ -90,10 +91,10 @@ public unsafe class VideoProcessor : IDisposable
 
         var duration = _mediaFile.GetDuration();
         var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
-        var logoDetections = new List<LogoDetection>();
 
         var frame = _mediaFile.GetYDataAtTimestamp(0);
-        if (frame == null) return logoDetections;
+        if (frame == null)
+            return logoDetections;
 
         // Initialize rolling average queue and sum matrix
         var rollingEdgeMaps = new Queue<Matrix<float>>();
@@ -146,11 +147,14 @@ public unsafe class VideoProcessor : IDisposable
             // Compare against logo reference
             var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
 
-            // Check if the difference is below the threshold
-            logoDetections.Add(new LogoDetection(frame.TimeSpan, logoDiff));
+            var logoTimeSpan = frame.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxFramesInRollingAverage / 2.0));
+            if (logoTimeSpan >= TimeSpan.Zero)
+            {
+                logoDetections.Add(new LogoDetection(logoTimeSpan, logoDiff));
+            }
 
             // Read next frame
-            frame = _mediaFile.ReadNextFrame();
+                frame = _mediaFile.ReadNextFrame();
         }
 
         // Create logodifferences CSV file
@@ -196,7 +200,7 @@ public unsafe class VideoProcessor : IDisposable
         line.MarkerSize = 0;
 
         // Add horizontal threshold line
-        var threshold = plot.Add.HorizontalLine(1.0);
+        var threshold = plot.Add.HorizontalLine(logoThreshold);
         threshold.Color = new ScottPlot.Color(255, 0, 0); // Red
         threshold.LinePattern = ScottPlot.LinePattern.Dashed;
 

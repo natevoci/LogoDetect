@@ -111,23 +111,24 @@ public class Program
         Console.WriteLine("Generating segments...");
         stopwatch.Restart();
         var segments = videoProcessor.GenerateSegments(logoDetections, logoThreshold, minDuration);
+        File.WriteAllLines(Path.ChangeExtension(outputPath, ".segments.csv"), segments.Select(s => s.ToString()));
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-        // Extend segments to nearest scene changes
-        Console.WriteLine($"Extending {segments.Count()} segments to scene changes...");
-        stopwatch.Restart();
-        segments = videoProcessor.ExtendSegmentsToSceneChanges(
-            segments,
-            sceneThreshold,
-            new Progress<double>(p =>
-            {
-                Console.Write($"\rProgress: {p:F1}%");
-                if (p >= 100) Console.WriteLine();
-            })
-        );
-        stopwatch.Stop();
-        Console.WriteLine($"Segments extended in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        // // Extend segments to nearest scene changes
+        // Console.WriteLine($"Extending {segments.Count()} segments to scene changes...");
+        // stopwatch.Restart();
+        // segments = videoProcessor.ExtendSegmentsToSceneChanges(
+        //     segments,
+        //     sceneThreshold,
+        //     new Progress<double>(p =>
+        //     {
+        //         Console.Write($"\rProgress: {p:F1}%");
+        //         if (p >= 100) Console.WriteLine();
+        //     })
+        // );
+        // stopwatch.Stop();
+        // Console.WriteLine($"Segments extended in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
         // Write segments to CSV file
         stopwatch.Restart();
