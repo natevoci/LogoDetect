@@ -13,6 +13,7 @@
                 "--input",
                 "${workspaceFolder}/TestSamples/Bluey-SD.mp4"
             ],
+            "preLaunchTask": "dotnet: build",
         }
 
     ]
