@@ -67,14 +67,15 @@ public unsafe class VideoProcessor : IDisposable
         // Report 100% completion
         progress?.Report(100);
     }
-
-    public List<(TimeSpan Time, bool HasLogo)> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
+    
+    public List<LogoDetection> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
     {
         if (_logoReference == null)
             throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
-            
+
         var duration = _mediaFile.GetDuration();
-        var logoDetections = new List<(TimeSpan Time, bool HasLogo)>();
+        var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
+        var logoDetections = new List<LogoDetection>();
 
         var frame = _mediaFile.GetYDataAtTimestamp(0);
         if (frame == null) return logoDetections;
@@ -84,11 +85,6 @@ public unsafe class VideoProcessor : IDisposable
         var height = frame.YData.Height;
         var width = frame.YData.Width;
         var sumMatrix = Matrix<float>.Build.Dense(height, width);
-
-        // Create debug CSV file
-        var debugFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".debug.csv");
-        using var writer = new StreamWriter(debugFilePath, false);
-        writer.WriteLine("TimeSpan,Diff,IsAboveThreshold");
 
         // Pre-fill the rolling average with MaxFramesInRollingAverage frames with blank edge maps
         var blankEdgeMap = Matrix<float>.Build.Dense(height, width, byte.MaxValue / 2.0f);
@@ -121,17 +117,29 @@ public unsafe class VideoProcessor : IDisposable
             var averageEdgeMap = sumMatrix.Divide(rollingEdgeMaps.Count);
 
             // Compare against logo reference
-            var diff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
-
-            // Write debug information to CSV
-            writer.WriteLine($"{frame.TimeSpan:hh\\:mm\\:ss\\.fff},{diff:F6},{diff > logoThreshold}");
+            var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
 
             // Check if the difference is below the threshold
-            logoDetections.Add((frame.TimeSpan, diff <= logoThreshold));
+            logoDetections.Add(new LogoDetection(frame.TimeSpan, logoDiff, logoDiff <= logoThreshold));
 
             // Read next frame
             frame = _mediaFile.ReadNextKeyFrame();
         }
+
+        // Create debug CSV file
+        var debugFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".debug.csv");
+        using (var writer = new StreamWriter(debugFilePath, false))
+        {
+            writer.WriteLine("TimeSpan,Diff,IsAboveThreshold");
+            foreach (var detection in logoDetections)
+            {
+                // Write debug information to CSV
+                writer.WriteLine($"{detection.Time:hh\\:mm\\:ss\\.fff},{detection.LogoDiff:F6},{detection.HasLogo}");
+            }
+        }
+
+        SaveGraphOfLogoDetections(logoThreshold, durationTimeSpan, logoDetections);
+
 
         // Report 100% completion
         progress?.Report(100);
@@ -139,8 +147,147 @@ public unsafe class VideoProcessor : IDisposable
         return logoDetections;
     }
 
+    private void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
+    {
+        var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.png");
+        using (var bitmap = new SKBitmap(800, 400))
+        {
+            using (var canvas = new SKCanvas(bitmap))
+            {
+                canvas.Clear(SKColors.White);
+
+                // Setup paint styles
+                var axisPaint = new SKPaint
+                {
+                    Color = SKColors.Black,
+                    StrokeWidth = 2,
+                    IsAntialias = true
+                };
+
+                var linePaint = new SKPaint
+                {
+                    Color = SKColors.Blue,
+                    StrokeWidth = 2,
+                    IsAntialias = true
+                };
+
+                var textPaint = new SKPaint
+                {
+                    Color = SKColors.Black,
+                    TextSize = 12,
+                    IsAntialias = true,
+                    TextAlign = SKTextAlign.Center
+                };
+
+                var tickPaint = new SKPaint
+                {
+                    Color = SKColors.Gray,
+                    StrokeWidth = 1,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 2, 2 }, 0)
+                };
+
+                // Draw axes
+                canvas.DrawLine(50, 350, 750, 350, axisPaint); // X-axis
+                canvas.DrawLine(50, 350, 50, 50, axisPaint); // Y-axis
+
+                // Draw tick marks and labels on X axis
+                int minuteInterval = Math.Max(1, (int)(durationTimeSpan.TotalMinutes / 10)); // Show at most 10 labels
+                for (int minute = 0; minute <= durationTimeSpan.TotalMinutes; minute += minuteInterval)
+                {
+                    var timeSpan = TimeSpan.FromMinutes(minute);
+                    var x = (float)(50 + (timeSpan.TotalSeconds / durationTimeSpan.TotalSeconds) * 700);
+                    
+                    // Draw tick mark
+                    canvas.DrawLine(x, 350, x, 355, axisPaint);
+                    
+                    // Draw grid line
+                    canvas.DrawLine(x, 350, x, 50, tickPaint);
+                    
+                    // Draw time label
+                    var label = timeSpan.TotalHours >= 1 
+                        ? $"{timeSpan:h\\:mm}"
+                        : $"{timeSpan:m\\:ss}";
+                    canvas.DrawText(label, x, 370, textPaint);
+                }
+
+                // Draw Y-axis labels and tick marks
+                for (float ratio = 0; ratio <= 1.0f; ratio += 0.2f)
+                {
+                    var y = 350 - ratio * 300;
+                    canvas.DrawLine(45, y, 50, y, axisPaint); // Tick mark
+                    canvas.DrawLine(50, y, 750, y, tickPaint); // Grid line
+                    canvas.DrawText($"{ratio:F1}", 35, y + 4, new SKPaint 
+                    { 
+                        Color = SKColors.Black, 
+                        TextSize = 12,
+                        IsAntialias = true,
+                        TextAlign = SKTextAlign.Right
+                    });
+                }
+
+                // Draw axis labels
+                canvas.DrawText("Time", 400, 390, new SKPaint
+                {
+                    Color = SKColors.Black,
+                    TextSize = 14,
+                    IsAntialias = true,
+                    TextAlign = SKTextAlign.Center
+                });
+
+                // Draw Y-axis label with rotation
+                canvas.Save();
+                canvas.RotateDegrees(-90, 20, 200);
+                canvas.DrawText("Logo Difference", 20, 200, new SKPaint
+                {
+                    Color = SKColors.Black,
+                    TextSize = 14,
+                    IsAntialias = true,
+                    TextAlign = SKTextAlign.Center
+                });
+                canvas.Restore();
+
+                // Draw graph lines
+                for (int i = 1; i < logoDetections.Count; i++)
+                {
+                    var prev = logoDetections[i - 1];
+                    var curr = logoDetections[i];
+
+                    var x1 = (float)(50 + (prev.Time.TotalSeconds / durationTimeSpan.TotalSeconds) * 700);
+                    var y1 = (float)(350 - (prev.LogoDiff / logoThreshold) * 300);
+                    var x2 = (float)(50 + (curr.Time.TotalSeconds / durationTimeSpan.TotalSeconds) * 700);
+                    var y2 = (float)(350 - (curr.LogoDiff / logoThreshold) * 300);
+
+                    canvas.DrawLine(x1, y1, x2, y2, linePaint);
+                }
+
+                // Draw threshold line
+                var thresholdPaint = new SKPaint
+                {
+                    Color = SKColors.Red,
+                    StrokeWidth = 1,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0)
+                };
+                canvas.DrawLine(50, 350 - 300, 750, 350 - 300, thresholdPaint);
+                canvas.DrawText("Threshold", 760, 350 - 300, new SKPaint
+                {
+                    Color = SKColors.Red,
+                    TextSize = 12,
+                    IsAntialias = true,
+                    TextAlign = SKTextAlign.Left
+                });
+            }
+
+            // Save the bitmap to a file
+            using var stream = File.Create(graphFilePath);
+            using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+            data.SaveTo(stream);
+        }
+    }
+
     public IEnumerable<VideoSegment> GenerateSegments(
-        List<(TimeSpan Time, bool HasLogo)> logoDetections,
+        List<LogoDetection> logoDetections,
         TimeSpan minDuration)
     {
         var segments = new List<VideoSegment>();
