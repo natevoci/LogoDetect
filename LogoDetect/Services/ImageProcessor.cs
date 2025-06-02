@@ -57,26 +57,30 @@ public class ImageProcessor
         // Calculate Y gradient using hardware acceleration
         var dy = downShift.Subtract(centerRegion);
 
-        var output = dx.Add(dy)
-            .Divide(2)
-            .Add(byte.MaxValue / 2.0f);
+        var output = dx.Add(dy);
 
-        // Restrict the output values to be in the 0-255 range using hardware acceleration
+        // Clear margin pixels around the edges
+        var rowVector = Vector<float>.Build.Dense(output.ColumnCount, 0.0f);
+        var colVector = Vector<float>.Build.Dense(output.RowCount, 0.0f);
+        foreach (var rowIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.RowCount - edgeMargin, edgeMargin)))
+        {
+            output.SetRow(rowIndex, rowVector);
+        }
+        foreach (var colIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.ColumnCount - edgeMargin, edgeMargin)))
+        {
+            output.SetColumn(colIndex, colVector);
+        }
+
+        // Scale output to a suitable range
+        // output = output
+        //     .Divide(2.0f)
+        //     .Multiply(4.0f);
+
+        // Restrict the output values to be in the 0-255 range
         var result = output
-            .PointwiseMaximum(byte.MinValue)
-            .PointwiseMinimum(byte.MaxValue);
-
-        // Set margin pixels around the edges to byte.MaxValue / 2.0f using matrix operations
-        var rowVector = Vector<float>.Build.Dense(result.ColumnCount, byte.MaxValue / 2.0f);
-        var colVector = Vector<float>.Build.Dense(result.RowCount, byte.MaxValue / 2.0f);
-        foreach (var rowIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(result.RowCount - edgeMargin, edgeMargin)))
-        {
-            result.SetRow(rowIndex, rowVector);
-        }
-        foreach (var colIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(result.ColumnCount - edgeMargin, edgeMargin)))
-        {
-            result.SetColumn(colIndex, colVector);
-        }
+            .Add(byte.MaxValue / 2.0f);
+            // .PointwiseMaximum(byte.MinValue)
+            // .PointwiseMinimum(byte.MaxValue);
 
         // YData.SaveBitmapToFile(padded, "D:\\temp\\logo\\padded.png");
         // YData.SaveBitmapToFile(rightShift, "D:\\temp\\logo\\right.png");
@@ -103,10 +107,18 @@ public class ImageProcessor
         return (diffSum / (totalPixels * 255.0)) > threshold;
     }
 
-    public float CompareEdgeData(Matrix<float> reference, Matrix<float> edges)
+    public float CompareEdgeData(Matrix<float> reference, Matrix<float> current)
     {
-        // Use hardware-accelerated matrix subtraction and element-wise operations
-        var diff = reference.Subtract(edges);
-        return (float)diff.PointwiseAbs().Enumerate().Average();
+        // Move matrix values to a zero centered range
+        reference = reference.Subtract(byte.MaxValue / 2.0f);
+        current = current.Subtract(byte.MaxValue / 2.0f);
+
+        var currentSignal = reference.PointwiseMultiply(current).PointwiseAbs().Enumerate().Sum();
+        var maxSignal = reference.PointwiseMultiply(reference).PointwiseAbs().Enumerate().Sum();
+
+        return currentSignal / maxSignal;
+        // // Use hardware-accelerated matrix subtraction and element-wise operations
+        // var diff = reference.Subtract(current);
+        // return (float)diff.PointwiseAbs().Enumerate().Average();
     }
 }

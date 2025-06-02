@@ -42,8 +42,8 @@ public unsafe class VideoProcessor : IDisposable
             if (frame != null)
             {
                 var edges = _imageProcessor.DetectEdges(frame.YData);
-                // frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{timeSpan:hh\\-mm\\-ss}.png"));
-                // edges.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.png"));
+                // frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.png"));
+                // edges.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.edges.png"));
 
                 referenceMatrix = referenceMatrix.Add(edges.MatrixData);
                 framesProcessed++;
@@ -107,7 +107,7 @@ public unsafe class VideoProcessor : IDisposable
             nextSecond++;
 
             // Report progress as a percentage (0-100)
-                progress?.Report((double)frame.Timestamp / duration * 100);
+            progress?.Report((double)frame.Timestamp / duration * 100);
 
             // frame.YData.SaveBitmapToFile(Path.ChangeExtension(_mediaFile.FilePath, $".{frame.TimeSpan:hh\\-mm\\-ss\\-fff}.png"));
 
