@@ -33,10 +33,10 @@ public unsafe class VideoProcessor : IDisposable
         var referenceMatrix = Matrix<float>.Build.Dense(height, width);
         var framesProcessed = 0;
 
-        // Sample 250 frames evenly spaced throughout the video
+        // Sample 250 frames evenly spaced from 10% to 75% of the video duration
         for (int i = 0; i < 250; i++)
         {
-            var timestamp = duration * i / 250;
+            var timestamp = (long)(duration * (i / 250.0) * 0.65 + (duration * 0.1));
             var timeSpan = TimeSpanExtensions.FromTimestamp(timestamp);
             frame = _mediaFile.GetYDataAtTimestamp(timestamp);
             if (frame != null)

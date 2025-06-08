@@ -14,8 +14,8 @@ public class Program
 
         var logoThresholdOption = new Option<double>(
             name: "--logo-threshold",
-            description: "Logo detection threshold (default 1.2)",
-            getDefaultValue: () => 1.2);
+            description: "Logo detection threshold (default 1.0)",
+            getDefaultValue: () => 1.0);
 
         var sceneChangeThresholdOption = new Option<double>(
             name: "--scene-change-threshold",
