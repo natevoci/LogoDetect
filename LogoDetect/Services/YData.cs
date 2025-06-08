@@ -88,4 +88,10 @@ public class YData
         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
         data.SaveTo(stream);
     }
+
+    public static YData LoadFromFile(string path)
+    {
+        using var bitmap = SKBitmap.Decode(path);
+        return FromBitmap(bitmap);
+    }
 }

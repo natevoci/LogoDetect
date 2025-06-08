@@ -9,7 +9,7 @@ public class Program
     {
         var inputOption = new Option<FileInfo>(
             name: "--input",
-            description: "Input video file path")
+            description: "Input video file path (only MP4 supported)")
         { IsRequired = true };
 
         var logoThresholdOption = new Option<double>(
@@ -69,20 +69,25 @@ public class Program
         if (!File.Exists(normalizedInputPath))
             throw new FileNotFoundException("Input video file not found", normalizedInputPath);
 
+        if (Path.GetExtension(normalizedInputPath).ToLowerInvariant() != ".mp4")
+            throw new ArgumentException("Input file must be an MP4 video", normalizedInputPath);
+
         // Normalize the output path if provided, otherwise create one based on the input path
         var outputPath = output != null
             ? Path.GetFullPath(output.FullName)
-            : Path.ChangeExtension(normalizedInputPath, ".csv");
+            : Path.ChangeExtension(normalizedInputPath, ".segments.csv");
         Console.WriteLine($"Processing video: {normalizedInputPath}");
         Console.WriteLine($"Output CSV file: {outputPath}");
 
         FFmpegBinariesHelper.RegisterFFmpegBinaries();
+
 
         Console.WriteLine("Loading video file...");
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var videoProcessor = new VideoProcessor(normalizedInputPath);
         stopwatch.Stop();
         Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
 
         Console.WriteLine("Generating logo reference...");
         stopwatch.Restart();
@@ -91,29 +96,37 @@ public class Program
             new Progress<double>(p =>
             {
                 Console.Write($"\rProgress: {p:F1}%");
-                if (p >= 100) Console.WriteLine();
             })
         );
         stopwatch.Stop();
-        Console.WriteLine($"Logo reference generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        Console.WriteLine($"\nLogo reference generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
 
         Console.WriteLine("Detecting logo frames...");
         stopwatch.Restart();
-        var logoDetections = videoProcessor.DetectLogoFrames(logoThreshold, new Progress<double>(p =>
+        var logoDetections = videoProcessor.DetectLogoFrames(new Progress<double>(p =>
         {
             Console.Write($"\rProgress: {p:F1}%");
-            if (p >= 100) Console.WriteLine();
         }));
         stopwatch.Stop();
-        Console.WriteLine($"Logo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+
+        Console.WriteLine("Saving graph of logo detections...");
+        stopwatch.Restart();
+        videoProcessor.SaveGraphOfLogoDetections(logoThreshold, videoProcessor.MediaFile.GetDurationTimeSpan(), logoDetections);
+        stopwatch.Stop();
+        Console.WriteLine($"Graph saved in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
 
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
         stopwatch.Restart();
         var segments = videoProcessor.GenerateSegments(logoDetections, logoThreshold, minDuration);
-        File.WriteAllLines(Path.ChangeExtension(outputPath, ".segments.csv"), segments.Select(s => s.ToString()));
+        File.WriteAllLines(Path.ChangeExtension(outputPath, "-logo-only.csv"), segments.Select(s => s.ToString()));
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
 
         // // Extend segments to nearest scene changes
         // Console.WriteLine($"Extending {segments.Count()} segments to scene changes...");

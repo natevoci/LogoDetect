@@ -125,57 +125,14 @@ public unsafe class MediaFile : IDisposable
         }
     }
 
-    public Frame? ReadNextFrame()
+    public Frame? ReadNextFrame(bool onlyKeyFrames = false)
     {
         try
         {
             while (av_read_frame(_formatContext, _packet) >= 0)
             {
-                if (_packet->stream_index == _videoStream)
+                if (_packet->stream_index == _videoStream && (!onlyKeyFrames || (_packet->flags & AV_PKT_FLAG_KEY) != 0))
                 {
-                    int response = avcodec_send_packet(_codecContext, _packet);
-                    if (response < 0) continue;
-
-                    response = avcodec_receive_frame(_codecContext, _frame);
-                    if (response < 0) continue;
-
-                    // Extract Y data (luminance) from frame
-                    var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
-                    Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
-
-                    //
-
-                    _currentTimestamp = _frame->best_effort_timestamp;
-
-                    // Convert timestamp from tbn to AV_TIME_BASE
-                    var tbn = _formatContext->streams[_videoStream]->time_base;
-                    _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den * AV_TIME_BASE);
-
-                    av_packet_unref(_packet);
-                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
-                    return new Frame(yData, _currentTimestamp);
-                }
-                av_packet_unref(_packet);
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
-    }
-
-    public Frame? ReadNextKeyFrame()
-    {
-        try
-        {
-            while (av_read_frame(_formatContext, _packet) >= 0)
-            {
-                if (_packet->stream_index == _videoStream && (_packet->flags & AV_PKT_FLAG_KEY) != 0)
-                {
-                    // continue if the video packet is a P or B frame
-
                     int response = avcodec_send_packet(_codecContext, _packet);
                     if (response < 0) continue;
 
@@ -207,7 +164,12 @@ public unsafe class MediaFile : IDisposable
         return null;
     }
 
-    public Frame? GetYDataAtTimestamp(long timestamp)
+    public Frame? ReadNextKeyFrame()
+    {
+        return ReadNextFrame(onlyKeyFrames: true);
+    }
+
+    public Frame? GetFrameAtTimestamp(long timestamp)
     {
         if (timestamp < 0)
         {
@@ -247,9 +209,9 @@ public unsafe class MediaFile : IDisposable
         return ReadNextFrame();
     }
 
-    public Frame? GetYDataAtTimeSpan(TimeSpan timeSpan)
+    public Frame? GetFrameAtTimeSpan(TimeSpan timeSpan)
     {
-        return GetYDataAtTimestamp(timeSpan.ToTimestamp());
+        return GetFrameAtTimestamp(timeSpan.ToTimestamp());
     }
 
     public long GetDuration() => _formatContext->duration;

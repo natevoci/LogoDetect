@@ -12,6 +12,8 @@ public unsafe class VideoProcessor : IDisposable
     private readonly MediaFile _mediaFile;
     private YData? _logoReference;
 
+    public MediaFile MediaFile => _mediaFile;
+
     public VideoProcessor(string inputPath)
     {
         _imageProcessor = new ImageProcessor();
@@ -20,9 +22,16 @@ public unsafe class VideoProcessor : IDisposable
 
     public void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
     {
+        if (File.Exists(logoPath))
+        {
+            // If logo reference already exists, load it
+            _logoReference = YData.LoadFromFile(logoPath);
+            return;
+        }
+
         var duration = _mediaFile.GetDuration();
         var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
-        var frame = _mediaFile.GetYDataAtTimestamp(0);
+        var frame = _mediaFile.GetFrameAtTimestamp(0);
         if (frame == null)
             return;
 
@@ -38,7 +47,7 @@ public unsafe class VideoProcessor : IDisposable
         {
             var timestamp = (long)(duration * (i / 250.0) * 0.65 + (duration * 0.1));
             var timeSpan = TimeSpanExtensions.FromTimestamp(timestamp);
-            frame = _mediaFile.GetYDataAtTimestamp(timestamp);
+            frame = _mediaFile.GetFrameAtTimestamp(timestamp);
             if (frame != null)
             {
                 var edges = _imageProcessor.DetectEdges(frame.YData);
@@ -68,7 +77,7 @@ public unsafe class VideoProcessor : IDisposable
         progress?.Report(100);
     }
     
-    public List<LogoDetection> DetectLogoFrames(double logoThreshold, IProgress<double>? progress = null)
+    public List<LogoDetection> DetectLogoFrames(IProgress<double>? progress = null)
     {
         var logoDetections = new List<LogoDetection>();
         var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.csv");
@@ -92,14 +101,14 @@ public unsafe class VideoProcessor : IDisposable
         var duration = _mediaFile.GetDuration();
         var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
 
-        var frame = _mediaFile.GetYDataAtTimestamp(0);
-        if (frame == null)
+        var refFrame = _mediaFile.GetFrameAtTimestamp(0);
+        if (refFrame == null)
             return logoDetections;
 
         // Initialize rolling average queue and sum matrix
         var rollingEdgeMaps = new Queue<Matrix<float>>();
-        var height = frame.YData.Height;
-        var width = frame.YData.Width;
+        var height = refFrame.YData.Height;
+        var width = refFrame.YData.Width;
         var sumMatrix = Matrix<float>.Build.Dense(height, width);
 
         // Pre-fill the rolling average with MaxFramesInRollingAverage frames with blank edge maps
@@ -110,18 +119,8 @@ public unsafe class VideoProcessor : IDisposable
             sumMatrix = sumMatrix.Add(blankEdgeMap);
         }
 
-        int nextSecond = 0;
-
-        while (frame != null && frame.Timestamp < duration)
+        foreach (var frame in GetFramesToAnalyze(true))
         {
-            if (frame.TimeSpan.TotalSeconds < nextSecond)
-            {
-                frame = _mediaFile.ReadNextFrame();
-                continue; // Skip frames until we reach the next second
-            }
-
-            nextSecond++;
-
             // Report progress as a percentage (0-100)
             progress?.Report((double)frame.Timestamp / duration * 100);
 
@@ -152,15 +151,12 @@ public unsafe class VideoProcessor : IDisposable
             {
                 logoDetections.Add(new LogoDetection(logoTimeSpan, logoDiff));
             }
-
-            // Read next frame
-                frame = _mediaFile.ReadNextFrame();
         }
 
         // Create logodifferences CSV file
         using (var writer = new StreamWriter(csvFilePath, false))
         {
-            writer.WriteLine("TimeSpan,Diff,IsAboveThreshold");
+            writer.WriteLine("TimeSpan,Diff");
             foreach (var detection in logoDetections)
             {
                 // Write debug information to CSV
@@ -168,16 +164,13 @@ public unsafe class VideoProcessor : IDisposable
             }
         }
 
-        SaveGraphOfLogoDetections(logoThreshold, durationTimeSpan, logoDetections);
-
-
         // Report 100% completion
         progress?.Report(100);
 
         return logoDetections;
     }
 
-    private void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
+    public void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
     {
         var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.png");
         
@@ -336,10 +329,51 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile.Dispose();
     }
 
+    private IEnumerable<Frame> GetFramesToAnalyze(bool onlyUseKeyFrames = false)
+    {
+        var duration = _mediaFile.GetDuration();
+
+        var frame = _mediaFile.GetFrameAtTimestamp(0);
+        if (frame == null)
+            yield break; // No frames to analyze
+
+        int nextSecond = 0;
+
+        while (frame != null && frame.Timestamp < duration)
+        {
+            if (frame.TimeSpan.TotalSeconds < nextSecond)
+            {
+                frame = _mediaFile.ReadNextFrame(onlyUseKeyFrames);
+                continue; // Skip frames until we reach the next second
+            }
+
+            nextSecond++;
+
+            yield return frame;
+        }
+    }
+
+    private IEnumerable<Frame> GetFramesToAnalyzeBySeeking()
+    {
+        var duration = _mediaFile.GetDurationTimeSpan();
+
+        // Process frames at 2-second intervals
+        for (var time = TimeSpan.Zero; time < duration; time += TimeSpan.FromSeconds(2))
+        {
+            var frame = _mediaFile.GetFrameAtTimeSpan(time);
+
+            if (frame == null)
+                break;
+
+            yield return frame;
+        }
+    }
+
+
     private TimeSpan FindPreviousSceneChange(TimeSpan startTime, TimeSpan minTime, double sceneThreshold)
     {
         var earliestTimeLoaded = startTime;
-        
+
         for (var searchTime = startTime; searchTime >= minTime;)
         {
             // Search backwards in 30-second chunks
@@ -347,12 +381,12 @@ public unsafe class VideoProcessor : IDisposable
             if (searchTime < minTime)
                 searchTime = minTime;
 
-            var previousFrame = _mediaFile.GetYDataAtTimeSpan(searchTime);
+            var previousFrame = _mediaFile.GetFrameAtTimeSpan(searchTime);
             if (previousFrame == null)
                 continue; // No frame at this time, skip
 
             var firstFrame = previousFrame;
-            
+
             Frame? latestSceneChangeFrame = null;
 
             while (true)
@@ -390,7 +424,7 @@ public unsafe class VideoProcessor : IDisposable
         var startTimestamp = startTime.ToTimestamp();
         var maxTimestamp = maxTime.ToTimestamp();
 
-        var previousFrame = _mediaFile.GetYDataAtTimeSpan(startTime);
+        var previousFrame = _mediaFile.GetFrameAtTimeSpan(startTime);
         if (previousFrame == null)
             return startTime; // No frame at start time, return original time
 
