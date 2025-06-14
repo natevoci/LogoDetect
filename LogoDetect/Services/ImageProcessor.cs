@@ -122,8 +122,20 @@ public class ImageProcessor
         var maxSignal = reference.PointwiseMultiply(reference).PointwiseAbs().Enumerate().Sum();
 
         return currentSignal / maxSignal;
-        // // Use hardware-accelerated matrix subtraction and element-wise operations
-        // var diff = reference.Subtract(current);
-        // return (float)diff.PointwiseAbs().Enumerate().Average();
+    }
+    
+    public bool IsBlackFrame(YData data, double threshold)
+    {
+        // Calculate average luminance - closer to 0 means darker
+        var meanLuminance = data.MatrixData.Enumerate().Average();
+
+        // Calculate percentage of pixels that are very dark (below threshold * 255)
+        var darkPixelThreshold = threshold * 255.0;
+        var darkPixelCount = data.MatrixData.Enumerate().Count(x => x < darkPixelThreshold);
+        var totalPixels = data.Width * data.Height;
+        var darkPixelPercentage = darkPixelCount / (double)totalPixels;
+
+        // Frame is considered black if average luminance is very low and most pixels are dark
+        return meanLuminance < darkPixelThreshold && darkPixelPercentage > 0.95;
     }
 }

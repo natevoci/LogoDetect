@@ -328,24 +328,33 @@ public unsafe class VideoProcessor : IDisposable
         return result;
     }
 
-    public void ProcessSceneChanges(string outputPath, double sceneThreshold, IProgress<double>? progress = null)
+    public void ProcessSceneChanges(string outputPath, double sceneThreshold, double blankThreshold, IProgress<double>? progress = null)
     {
         var duration = _mediaFile.GetDuration();
-        var sceneChanges = new List<(TimeSpan Time, double ChangeAmount)>();
+        var sceneChanges = new List<(TimeSpan Time, double ChangeAmount, string Type)>();
         
-        // Get all frames and process them sequentially, using all frames
+        // Get all frames and process them sequentially
         Frame? previousFrame = null;
         foreach (var frame in GetFramesToAnalyze(onlyUseKeyFrames: false))
-        {            // Calculate scene change percentage
-            if (previousFrame != null)
+        {
+            // Check for black frames
+            if (_imageProcessor.IsBlackFrame(frame.YData, blankThreshold))
             {
-                var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previousFrame.YData, frame.YData);
-                if (changeAmount > sceneThreshold)
+                sceneChanges.Add((frame.TimeSpan, 0.0, "black"));
+            }
+            else
+            {
+                // Calculate scene change percentage
+                if (previousFrame != null)
                 {
-                    sceneChanges.Add((frame.TimeSpan, changeAmount));
+                    var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previousFrame.YData, frame.YData);
+                    if (changeAmount > sceneThreshold)
+                    {
+                        sceneChanges.Add((frame.TimeSpan, changeAmount, "scene"));
+                    }
                 }
             }
-
+            
             previousFrame = frame;
 
             // Report progress as a percentage (0-100)
@@ -362,10 +371,10 @@ public unsafe class VideoProcessor : IDisposable
         // Write scene changes to CSV file
         using (var writer = new StreamWriter(outputPath, false))
         {
-            writer.WriteLine("TimeSpan,ChangeAmount");
+            writer.WriteLine("TimeSpan,ChangeAmount,Type");
             foreach (var change in sceneChanges.OrderBy(x => x.Time))
             {
-                writer.WriteLine($"{change.Time:hh\\:mm\\:ss\\.fff},{change.ChangeAmount:F6}");
+                writer.WriteLine($"{change.Time:hh\\:mm\\:ss\\.fff},{change.ChangeAmount:F6},{change.Type}");
             }
         }
 
@@ -374,7 +383,7 @@ public unsafe class VideoProcessor : IDisposable
         SaveSceneChangeGraph(sceneChanges, graphFilePath);
     }
 
-    private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount)> sceneChanges, string graphFilePath)
+    private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount, string Type)> sceneChanges, string graphFilePath)
     {
         if (File.Exists(graphFilePath))
         {
@@ -383,18 +392,37 @@ public unsafe class VideoProcessor : IDisposable
 
         var plot = new ScottPlot.Plot();
 
-        // Create arrays for plotting
-        var times = sceneChanges.Select(d => d.Time.TotalSeconds).ToArray();
-        var changes = sceneChanges.Select(d => d.ChangeAmount).ToArray();
+        // Split data by type
+        var sceneChangeData = sceneChanges.Where(x => x.Type == "scene").ToList();
+        var blackFrameData = sceneChanges.Where(x => x.Type == "black").ToList();
 
-        // Add the scene change line
-        var line = plot.Add.Scatter(times, changes);
-        line.LineWidth = 2;
-        line.Color = new ScottPlot.Color(0, 255, 0); // Green
-        line.MarkerSize = 0;
+        // Add scene changes (green)
+        if (sceneChangeData.Any())
+        {
+            var sceneChangeLine = plot.Add.Scatter(
+                sceneChangeData.Select(d => d.Time.TotalSeconds).ToArray(),
+                sceneChangeData.Select(d => d.ChangeAmount).ToArray());            sceneChangeLine.LineWidth = 2;
+            sceneChangeLine.Color = new ScottPlot.Color(0, 255, 0);
+            sceneChangeLine.MarkerSize = 0;
+            plot.Legend.IsVisible = true;
+        }
+
+        // Add blank scenes as vertical lines (red)
+        bool addedBlankLegend = false;
+        foreach (var blackFrame in blackFrameData)
+        {
+            var verticalLine = plot.Add.VerticalLine(blackFrame.Time.TotalSeconds);
+            verticalLine.Color = new ScottPlot.Color(255, 0, 0);
+            verticalLine.LineWidth = 1;
+            if (!addedBlankLegend)
+            {
+                addedBlankLegend = true;
+                plot.Legend.IsVisible = true;
+            }
+        }
 
         // Configure axes
-        plot.Axes.Title.Label.Text = "Scene Changes";
+        plot.Axes.Title.Label.Text = "Scene Changes and Blank Scenes";
         plot.Axes.Bottom.Label.Text = "Time";
         plot.Axes.Left.Label.Text = "Change Amount";
         

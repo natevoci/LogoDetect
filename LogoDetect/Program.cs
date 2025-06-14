@@ -22,6 +22,11 @@ public class Program
             description: "Scene change detection threshold (0.0-1.0)",
             getDefaultValue: () => 0.2);
 
+        var blackFrameThresholdOption = new Option<double>(
+            name: "--black-frame-threshold",
+            description: "Black frame detection threshold (0.0-1.0, lower values require darker pixels)",
+            getDefaultValue: () => 0.1);
+
         var minDurationOption = new Option<int>(
             name: "--min-duration",
             description: "Minimum cut duration in seconds",
@@ -37,22 +42,23 @@ public class Program
             inputOption,
             logoThresholdOption,
             sceneChangeThresholdOption,
+            blackFrameThresholdOption,
             minDurationOption,
             outputOption
         };
 
-        rootCommand.SetHandler(async (input, logoThreshold, sceneThreshold, minDuration, output) =>
+        rootCommand.SetHandler(async (input, logoThreshold, sceneThreshold, blankThreshold, minDuration, output) =>
         {
             try
             {
-                await Task.Run(() => ProcessVideo(input, logoThreshold, sceneThreshold, TimeSpan.FromSeconds(minDuration), output));
+                await Task.Run(() => ProcessVideo(input, logoThreshold, sceneThreshold, blankThreshold, TimeSpan.FromSeconds(minDuration), output));
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 Environment.Exit(1);
             }
-        }, inputOption, logoThresholdOption, sceneChangeThresholdOption, minDurationOption, outputOption);
+        }, inputOption, logoThresholdOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption);
 
         return await rootCommand.InvokeAsync(args);
     }
@@ -61,6 +67,7 @@ public class Program
         FileInfo input,
         double logoThreshold,
         double sceneThreshold,
+        double blankThreshold,
         TimeSpan minDuration,
         FileInfo? output)
     {
@@ -128,12 +135,13 @@ public class Program
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
 
-        Console.WriteLine("Processing scene changes...");
+        Console.WriteLine("Processing scene changes and blank scenes...");
         stopwatch.Restart();
         var sceneChangesPath = Path.ChangeExtension(normalizedInputPath, ".scenechanges.csv");
         videoProcessor.ProcessSceneChanges(
             sceneChangesPath,
             sceneThreshold,
+            blankThreshold,
             new Progress<double>(p =>
             {
                 Console.Write($"\rProgress: {p:F1}%");
