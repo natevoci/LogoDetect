@@ -7,7 +7,7 @@ namespace LogoDetect.Services;
 
 public unsafe class VideoProcessor : IDisposable
 {
-    private const int MaxFramesInRollingAverage = 30;
+    private const int MaxSecondsInRollingAverage = 30;
     private readonly ImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
     private YData? _logoReference;
@@ -107,15 +107,17 @@ public unsafe class VideoProcessor : IDisposable
 
         // Initialize rolling average queue and sum matrix
         var rollingEdgeMaps = new Queue<Matrix<float>>();
+        var rollingEdgeTimeSpans = new Queue<TimeSpan>();
         var height = refFrame.YData.Height;
         var width = refFrame.YData.Width;
         var sumMatrix = Matrix<float>.Build.Dense(height, width);
 
         // Pre-fill the rolling average with MaxFramesInRollingAverage frames with blank edge maps
         var blankEdgeMap = Matrix<float>.Build.Dense(height, width, byte.MaxValue / 2.0f);
-        for (int i = 0; i < MaxFramesInRollingAverage; i++)
+        for (int i = 0; i < MaxSecondsInRollingAverage; i++)
         {
             rollingEdgeMaps.Enqueue(blankEdgeMap);
+            rollingEdgeTimeSpans.Enqueue(TimeSpan.FromSeconds(i - MaxSecondsInRollingAverage));
             sumMatrix = sumMatrix.Add(blankEdgeMap);
         }
 
@@ -131,12 +133,14 @@ public unsafe class VideoProcessor : IDisposable
 
             // Add current edge map to rolling average
             rollingEdgeMaps.Enqueue(edgeMap.MatrixData);
+            rollingEdgeTimeSpans.Enqueue(frame.TimeSpan);
             sumMatrix = sumMatrix.Add(edgeMap.MatrixData);
 
             // Remove oldest edge map if we exceed the maximum
-            if (rollingEdgeMaps.Count > MaxFramesInRollingAverage)
+            while (rollingEdgeTimeSpans.Peek() < frame.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxSecondsInRollingAverage)))
             {
                 var oldestMatrix = rollingEdgeMaps.Dequeue();
+                rollingEdgeTimeSpans.Dequeue();
                 sumMatrix = sumMatrix.Subtract(oldestMatrix);
             }
 
@@ -146,7 +150,7 @@ public unsafe class VideoProcessor : IDisposable
             // Compare against logo reference
             var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
 
-            var logoTimeSpan = frame.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxFramesInRollingAverage / 2.0));
+            var logoTimeSpan = frame.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxSecondsInRollingAverage / 2.0));
             if (logoTimeSpan >= TimeSpan.Zero)
             {
                 logoDetections.Add(new LogoDetection(logoTimeSpan, logoDiff));
@@ -324,7 +328,102 @@ public unsafe class VideoProcessor : IDisposable
         return result;
     }
 
-    public void Dispose()
+    public void ProcessSceneChanges(string outputPath, double sceneThreshold, IProgress<double>? progress = null)
+    {
+        var duration = _mediaFile.GetDuration();
+        var sceneChanges = new List<(TimeSpan Time, double ChangeAmount)>();
+        
+        // Get all frames and process them sequentially, using all frames
+        Frame? previousFrame = null;
+        foreach (var frame in GetFramesToAnalyze(onlyUseKeyFrames: false))
+        {            // Calculate scene change percentage
+            if (previousFrame != null)
+            {
+                var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previousFrame.YData, frame.YData);
+                if (changeAmount > sceneThreshold)
+                {
+                    sceneChanges.Add((frame.TimeSpan, changeAmount));
+                }
+            }
+
+            previousFrame = frame;
+
+            // Report progress as a percentage (0-100)
+            progress?.Report((double)frame.Timestamp / duration * 100);
+        }
+
+        // Create the directory if it doesn't exist
+        var directory = Path.GetDirectoryName(outputPath);
+        if (directory != null && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        // Write scene changes to CSV file
+        using (var writer = new StreamWriter(outputPath, false))
+        {
+            writer.WriteLine("TimeSpan,ChangeAmount");
+            foreach (var change in sceneChanges.OrderBy(x => x.Time))
+            {
+                writer.WriteLine($"{change.Time:hh\\:mm\\:ss\\.fff},{change.ChangeAmount:F6}");
+            }
+        }
+
+        // Save visualization of scene changes
+        var graphFilePath = Path.ChangeExtension(outputPath, ".png");
+        SaveSceneChangeGraph(sceneChanges, graphFilePath);
+    }
+
+    private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount)> sceneChanges, string graphFilePath)
+    {
+        if (File.Exists(graphFilePath))
+        {
+            File.Delete(graphFilePath);
+        }
+
+        var plot = new ScottPlot.Plot();
+
+        // Create arrays for plotting
+        var times = sceneChanges.Select(d => d.Time.TotalSeconds).ToArray();
+        var changes = sceneChanges.Select(d => d.ChangeAmount).ToArray();
+
+        // Add the scene change line
+        var line = plot.Add.Scatter(times, changes);
+        line.LineWidth = 2;
+        line.Color = new ScottPlot.Color(0, 255, 0); // Green
+        line.MarkerSize = 0;
+
+        // Configure axes
+        plot.Axes.Title.Label.Text = "Scene Changes";
+        plot.Axes.Bottom.Label.Text = "Time";
+        plot.Axes.Left.Label.Text = "Change Amount";
+        
+        // Format X axis as time
+        var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
+        plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
+            positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
+                .Select(m => m * 60.0)
+                .ToArray(),
+            labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
+                .Select(m => TimeSpan.FromMinutes(m).ToString(@"mm\:ss"))
+                .ToArray()
+        );
+
+        // Format Y axis
+        plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
+            positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
+            labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()
+        );
+
+        // Style the plot
+        plot.FigureBackground.Color = new ScottPlot.Color(255, 255, 255); // White
+        plot.DataBackground.Color = new ScottPlot.Color(255, 255, 255); // White
+        plot.Grid.MajorLineColor = new ScottPlot.Color(200, 200, 200); // Light gray
+        plot.Grid.MajorLineWidth = 1;
+
+        // Save the plot
+        plot.SavePng(graphFilePath, 2000, 1000);
+    }    public void Dispose()
     {
         _mediaFile.Dispose();
     }
@@ -347,9 +446,10 @@ public unsafe class VideoProcessor : IDisposable
                 continue; // Skip frames until we reach the next second
             }
 
-            nextSecond++;
-
             yield return frame;
+
+            frame = _mediaFile.ReadNextFrame(onlyUseKeyFrames);
+            nextSecond++;
         }
     }
 

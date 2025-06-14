@@ -96,15 +96,20 @@ public class ImageProcessor
 
     public bool IsSceneChange(YData prevData, YData currData, double threshold)
     {
+        return CalculateSceneChangeAmount(prevData, currData) > threshold;
+    }
+
+    public double CalculateSceneChangeAmount(YData prevData, YData currData)
+    {
         if (prevData.Width != currData.Width || prevData.Height != currData.Height) 
-            return false;
+            return 0.0;
 
         // Calculate absolute difference using hardware acceleration
         var diff = prevData.MatrixData.Subtract(currData.MatrixData).PointwiseAbs();
         var diffSum = diff.Enumerate().Sum();
         var totalPixels = prevData.Width * prevData.Height;
 
-        return (diffSum / (totalPixels * 255.0)) > threshold;
+        return diffSum / (totalPixels * 255.0);
     }
 
     public float CompareEdgeData(Matrix<float> reference, Matrix<float> current)
