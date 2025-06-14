@@ -96,22 +96,9 @@ public class Program
         Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
 
-        Console.WriteLine("Generating logo reference...");
+        Console.WriteLine("Detecting logo frames with edge detection...");
         stopwatch.Restart();
-        videoProcessor.GenerateLogoReference(
-            Path.ChangeExtension(normalizedInputPath, ".logo.png"),
-            new Progress<double>(p =>
-            {
-                Console.Write($"\rProgress: {p:F1}%");
-            })
-        );
-        stopwatch.Stop();
-        Console.WriteLine($"\nLogo reference generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
-
-        Console.WriteLine("Detecting logo frames...");
-        stopwatch.Restart();
-        var logoDetections = videoProcessor.DetectLogoFrames(new Progress<double>(p =>
+        var logoDetections = videoProcessor.DetectLogoFramesWithEdgeDetection(normalizedInputPath, logoThreshold, new Progress<double>(p =>
         {
             Console.Write($"\rProgress: {p:F1}%");
         }));

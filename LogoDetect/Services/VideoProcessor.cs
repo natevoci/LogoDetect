@@ -20,7 +20,26 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile = new MediaFile(inputPath);
     }
 
-    public void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
+    public List<LogoDetection> DetectLogoFramesWithEdgeDetection(string normalizedInputPath, double logoThreshold, IProgress<double>? progress = null)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        Console.WriteLine("Generating logo reference...");
+        stopwatch.Restart();
+        GenerateLogoReference(Path.ChangeExtension(normalizedInputPath, ".logo.png"), progress);
+        stopwatch.Stop();
+        Console.WriteLine($"\nLogo reference generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        Console.WriteLine("Detecting logo frames...");
+        stopwatch.Restart();
+        var logoDetections = DetectLogoFrames(progress);
+        stopwatch.Stop();
+        Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        return logoDetections;
+    }
+
+    private void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
     {
         if (File.Exists(logoPath))
         {
@@ -77,7 +96,7 @@ public unsafe class VideoProcessor : IDisposable
         progress?.Report(100);
     }
     
-    public List<LogoDetection> DetectLogoFrames(IProgress<double>? progress = null)
+    private List<LogoDetection> DetectLogoFrames(IProgress<double>? progress = null)
     {
         var logoDetections = new List<LogoDetection>();
         var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.csv");
