@@ -17,6 +17,11 @@ public class Program
             description: "Logo detection threshold (default 1.0)",
             getDefaultValue: () => 1.0);
 
+        var reloadOption = new Option<bool>(
+            name: "--reload",
+            description: "Force reprocessing of video frames, ignoring cached results",
+            getDefaultValue: () => false);
+
         var sceneChangeThresholdOption = new Option<double>(
             name: "--scene-change-threshold",
             description: "Scene change detection threshold (0.0-1.0)",
@@ -41,24 +46,25 @@ public class Program
         {
             inputOption,
             logoThresholdOption,
+            reloadOption,
             sceneChangeThresholdOption,
             blackFrameThresholdOption,
             minDurationOption,
             outputOption
         };
 
-        rootCommand.SetHandler(async (input, logoThreshold, sceneThreshold, blankThreshold, minDuration, output) =>
+        rootCommand.SetHandler(async (input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output) =>
         {
             try
             {
-                await Task.Run(() => ProcessVideo(input, logoThreshold, sceneThreshold, blankThreshold, TimeSpan.FromSeconds(minDuration), output));
+                await Task.Run(() => ProcessVideo(input, logoThreshold, reload, sceneThreshold, blankThreshold, TimeSpan.FromSeconds(minDuration), output));
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 Environment.Exit(1);
             }
-        }, inputOption, logoThresholdOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption);
+        }, inputOption, logoThresholdOption, reloadOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption);
 
         return await rootCommand.InvokeAsync(args);
     }
@@ -66,6 +72,7 @@ public class Program
     private static void ProcessVideo(
         FileInfo input,
         double logoThreshold,
+        bool reload,
         double sceneThreshold,
         double blankThreshold,
         TimeSpan minDuration,
@@ -91,7 +98,7 @@ public class Program
 
         Console.WriteLine("Loading video file...");
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        using var videoProcessor = new VideoProcessor(normalizedInputPath);
+        using var videoProcessor = new VideoProcessor(normalizedInputPath, reload);
         stopwatch.Stop();
         Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
         

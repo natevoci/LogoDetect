@@ -12,13 +12,15 @@ public unsafe class VideoProcessor : IDisposable
     private readonly ImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
     private YData? _logoReference;
+    private readonly bool _forceReload;
 
     public MediaFile MediaFile => _mediaFile;
 
-    public VideoProcessor(string inputPath)
+    public VideoProcessor(string inputPath, bool forceReload = false)
     {
         _imageProcessor = new ImageProcessor();
         _mediaFile = new MediaFile(inputPath);
+        _forceReload = forceReload;
     }
 
     public List<LogoDetection> DetectLogoFramesWithEdgeDetection(string normalizedInputPath, double logoThreshold, IProgress<double>? progress = null)
@@ -42,9 +44,9 @@ public unsafe class VideoProcessor : IDisposable
 
     private void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
     {
-        if (File.Exists(logoPath))
+        if (File.Exists(logoPath) && !_forceReload)
         {
-            // If logo reference already exists, load it
+            // If logo reference already exists and not forcing reload, load it
             _logoReference = YData.LoadFromFile(logoPath);
             return;
         }
@@ -101,7 +103,7 @@ public unsafe class VideoProcessor : IDisposable
     {
         var logoDetections = new List<LogoDetection>();
         var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.csv");
-        if (File.Exists(csvFilePath))
+        if (File.Exists(csvFilePath) && !_forceReload)
         {
             logoDetections = File.ReadAllLines(csvFilePath)
                 .Skip(1) // Skip header
@@ -205,7 +207,9 @@ public unsafe class VideoProcessor : IDisposable
 
         // Delete existing file if it exists
         if (File.Exists(graphFilePath))
+        {
             File.Delete(graphFilePath);
+        }
 
         var plot = new Plot();
 
