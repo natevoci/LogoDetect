@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using LogoDetect.Models;
 using MathNet.Numerics.LinearAlgebra;
 using SkiaSharp;
+using ScottPlot;
 
 namespace LogoDetect.Services;
 
@@ -95,7 +96,7 @@ public unsafe class VideoProcessor : IDisposable
         // Report 100% completion
         progress?.Report(100);
     }
-    
+
     private List<LogoDetection> DetectLogoFrames(IProgress<double>? progress = null)
     {
         var logoDetections = new List<LogoDetection>();
@@ -115,7 +116,7 @@ public unsafe class VideoProcessor : IDisposable
         }
 
         if (_logoReference == null)
-                throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
+            throw new InvalidOperationException("Logo reference not generated. Call GenerateLogoReference first.");
 
         var duration = _mediaFile.GetDuration();
         var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
@@ -195,36 +196,40 @@ public unsafe class VideoProcessor : IDisposable
 
     public void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
     {
-        var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logodifferences.png");
-        
+        SaveGraphOfLogoDetectionsWithMethod(logoThreshold, durationTimeSpan, logoDetections, "edge");
+    }
+
+    public void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)
+    {
+        var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, $".logodifferences.{method}.png");
+
         // Delete existing file if it exists
         if (File.Exists(graphFilePath))
-        {
             File.Delete(graphFilePath);
-        }
-        
-        var plot = new ScottPlot.Plot();
 
-        // Create arrays for plotting
+        var plot = new Plot();
+
         var times = logoDetections.Select(d => d.Time.TotalSeconds).ToArray();
         var diffs = logoDetections.Select(d => (double)d.LogoDiff).ToArray();
 
-        // Add the logo difference line
         var line = plot.Add.Scatter(times, diffs);
         line.LineWidth = 2;
-        line.Color = new ScottPlot.Color(0, 0, 255); // Blue
+        line.Color = Colors.Blue;
         line.MarkerSize = 0;
+        line.LegendText = $"Logo Differences ({method})";
 
         // Add horizontal threshold line
         var threshold = plot.Add.HorizontalLine(logoThreshold);
-        threshold.Color = new ScottPlot.Color(255, 0, 0); // Red
+        threshold.Color = Colors.Red;
         threshold.LinePattern = ScottPlot.LinePattern.Dashed;
+        threshold.LineWidth = 2;
+        threshold.LegendText = "Logo Threshold";
 
         // Configure axes
-        plot.Axes.Title.Label.Text = "";
-        plot.Axes.Bottom.Label.Text = "Time";
-        plot.Axes.Left.Label.Text = "Logo Difference";
-        
+        plot.Title($"Logo Detection Results - {method}");
+        plot.XLabel("Time (seconds)");
+        plot.YLabel("Logo Difference");
+
         // Format X axis as time
         plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
             positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
@@ -346,12 +351,12 @@ public unsafe class VideoProcessor : IDisposable
 
         return result;
     }
-
+    
     public void ProcessSceneChanges(string outputPath, double sceneThreshold, double blankThreshold, IProgress<double>? progress = null)
     {
         var duration = _mediaFile.GetDuration();
         var sceneChanges = new List<(TimeSpan Time, double ChangeAmount, string Type)>();
-        
+
         // Get all frames and process them sequentially
         Frame? previousFrame = null;
         foreach (var frame in GetFramesToAnalyze(onlyUseKeyFrames: false))
@@ -373,7 +378,7 @@ public unsafe class VideoProcessor : IDisposable
                     }
                 }
             }
-            
+
             previousFrame = frame;
 
             // Report progress as a percentage (0-100)
@@ -470,9 +475,11 @@ public unsafe class VideoProcessor : IDisposable
 
         // Save the plot
         plot.SavePng(graphFilePath, 2000, 1000);
-    }    public void Dispose()
+    }
+
+    public void Dispose()
     {
-        _mediaFile.Dispose();
+        _mediaFile?.Dispose();
     }
 
     private IEnumerable<Frame> GetFramesToAnalyze(bool onlyUseKeyFrames = false)
@@ -597,5 +604,4 @@ public unsafe class VideoProcessor : IDisposable
             previousFrame = frame;
         }
     }
-
 }

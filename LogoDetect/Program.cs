@@ -94,8 +94,8 @@ public class Program
         using var videoProcessor = new VideoProcessor(normalizedInputPath);
         stopwatch.Stop();
         Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
-
+        
+        // Edge detection method
         Console.WriteLine("Detecting logo frames with edge detection...");
         stopwatch.Restart();
         var logoDetections = videoProcessor.DetectLogoFramesWithEdgeDetection(normalizedInputPath, logoThreshold, new Progress<double>(p =>
@@ -105,19 +105,19 @@ public class Program
         stopwatch.Stop();
         Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-
+        // Save graphs
         Console.WriteLine("Saving graph of logo detections...");
         stopwatch.Restart();
-        videoProcessor.SaveGraphOfLogoDetections(logoThreshold, videoProcessor.MediaFile.GetDurationTimeSpan(), logoDetections);
+        videoProcessor.SaveGraphOfLogoDetectionsWithMethod(logoThreshold, videoProcessor.MediaFile.GetDurationTimeSpan(), logoDetections, "edge");
         stopwatch.Stop();
         Console.WriteLine($"Graph saved in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
 
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
         stopwatch.Restart();
-        var segments = videoProcessor.GenerateSegments(logoDetections, logoThreshold, minDuration);
-        File.WriteAllLines(Path.ChangeExtension(outputPath, "-logo-only.csv"), segments.Select(s => s.ToString()));
+        var segments = new List<Models.VideoSegment>();
+        segments.AddRange(videoProcessor.GenerateSegments(logoDetections, logoThreshold, minDuration));
+        File.WriteAllLines(Path.ChangeExtension(outputPath, "-edge.csv"), segments.Select(s => s.ToString()));
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
@@ -136,7 +136,7 @@ public class Program
             })
         );
         stopwatch.Stop();
-        Console.WriteLine($"Scene changes processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        Console.WriteLine($"\nScene changes processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
 
         // // Extend segments to nearest scene changes
@@ -152,7 +152,7 @@ public class Program
         //     })
         // );
         // stopwatch.Stop();
-        // Console.WriteLine($"Segments extended in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        // Console.WriteLine($"\nSegments extended in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
 
         // Write segments to CSV file
