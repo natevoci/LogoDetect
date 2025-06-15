@@ -105,19 +105,12 @@ public class Program
         // Edge detection method
         Console.WriteLine("Detecting logo frames with edge detection...");
         stopwatch.Restart();
-        var logoDetections = videoProcessor.DetectLogoFramesWithEdgeDetection(normalizedInputPath, logoThreshold, new Progress<double>(p =>
+        var logoDetections = videoProcessor.DetectLogoFramesWithEdgeDetection(logoThreshold, new Progress<double>(p =>
         {
-            Console.Write($"\rProgress: {p:F1}%");
+            Console.Write($"\rProgress: {p:F1}%".PadRight(50, ' '));
         }));
         stopwatch.Stop();
         Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
-        // Save graphs
-        Console.WriteLine("Saving graph of logo detections...");
-        stopwatch.Restart();
-        videoProcessor.SaveGraphOfLogoDetectionsWithMethod(logoThreshold, videoProcessor.MediaFile.GetDurationTimeSpan(), logoDetections, "edge");
-        stopwatch.Stop();
-        Console.WriteLine($"Graph saved in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
@@ -138,7 +131,7 @@ public class Program
             blankThreshold,
             new Progress<double>(p =>
             {
-                Console.Write($"\rProgress: {p:F1}%");
+                Console.Write($"\rProgress: {p:F1}%".PadRight(50, ' '));
                 if (p >= 100) Console.WriteLine();
             })
         );
@@ -154,7 +147,7 @@ public class Program
         //     sceneThreshold,
         //     new Progress<double>(p =>
         //     {
-        //         Console.Write($"\rProgress: {p:F1}%");
+        //         Console.Write($"\rProgress: {p:F1}%".PadRight(50, ' '));
         //         if (p >= 100) Console.WriteLine();
         //     })
         // );

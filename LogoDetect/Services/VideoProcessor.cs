@@ -23,13 +23,13 @@ public unsafe class VideoProcessor : IDisposable
         _forceReload = forceReload;
     }
 
-    public List<LogoDetection> DetectLogoFramesWithEdgeDetection(string normalizedInputPath, double logoThreshold, IProgress<double>? progress = null)
+    public List<LogoDetection> DetectLogoFramesWithEdgeDetection(double logoThreshold, IProgress<double>? progress = null)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         Console.WriteLine("Generating logo reference...");
         stopwatch.Restart();
-        GenerateLogoReference(Path.ChangeExtension(normalizedInputPath, ".logo.png"), progress);
+        GenerateLogoReference(progress);
         stopwatch.Stop();
         Console.WriteLine($"\nLogo reference generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
@@ -39,15 +39,23 @@ public unsafe class VideoProcessor : IDisposable
         stopwatch.Stop();
         Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
+        // Save graphs
+        Console.WriteLine("Saving graph of logo detections...");
+        stopwatch.Restart();
+        SaveGraphOfLogoDetectionsWithMethod(logoThreshold, _mediaFile.GetDurationTimeSpan(), logoDetections, "edge");
+        stopwatch.Stop();
+        Console.WriteLine($"Graph saved in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
         return logoDetections;
     }
 
-    private void GenerateLogoReference(string logoPath, IProgress<double>? progress = null)
+    private void GenerateLogoReference(IProgress<double>? progress = null)
     {
-        if (File.Exists(logoPath) && !_forceReload)
+        var logoPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.png");
+        var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.csv");
+        if (File.Exists(csvFilePath) && !_forceReload)
         {
-            // If logo reference already exists and not forcing reload, load it
-            _logoReference = YData.LoadFromFile(logoPath);
+            _logoReference = YData.LoadFromCSV(csvFilePath);
             return;
         }
 
@@ -94,6 +102,9 @@ public unsafe class VideoProcessor : IDisposable
 
         // Convert _logoReference to a bitmap and save to logoPath
         _logoReference.SaveBitmapToFile(logoPath);
+
+        // Create logo CSV file
+        _logoReference.SaveToCSV(csvFilePath);
 
         // Report 100% completion
         progress?.Report(100);
@@ -143,7 +154,7 @@ public unsafe class VideoProcessor : IDisposable
             sumMatrix = sumMatrix.Add(blankEdgeMap);
         }
 
-        foreach (var frame in GetFramesToAnalyze(true))
+        foreach (var frame in GetFramesToAnalyze(false))
         {
             // Report progress as a percentage (0-100)
             progress?.Report((double)frame.Timestamp / duration * 100);
