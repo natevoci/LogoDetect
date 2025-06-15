@@ -10,6 +10,27 @@
 			},
 			"problemMatcher": [],
 			"label": "dotnet: build"
+		},
+		{
+			"label": "run: LogoDetect",
+			"type": "process",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"--project",
+				"${workspaceFolder}/LogoDetect/LogoDetect.csproj",
+				"--",
+				"--reload",
+				"--input",
+				"Z:\\TV\\Fringe\\Fringe - s05e06 - Through the Looking Glass and What Walter Found There-SD.mp4"
+			],
+			"problemMatcher": [],
+			"group": "build",
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"dependsOn": ["dotnet: build"]
 		}
 	]
 }
