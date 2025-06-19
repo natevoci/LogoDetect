@@ -76,16 +76,19 @@ public class Program
 
                 Console.WriteLine("Loading video file...");
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                using var videoProcessor = new VideoProcessor(normalizedInputPath, reload);
+                using var videoProcessor = new VideoProcessor(normalizedInputPath);
                 stopwatch.Stop();
                 Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-                await Task.Run(() => videoProcessor.ProcessVideo(
-                    logoThreshold,
-                    sceneThreshold,
-                    blankThreshold,
-                    TimeSpan.FromSeconds(minDuration),
-                    outputPath
+                await Task.Run(() => videoProcessor.ProcessVideo(new VideoProcessorSettings()
+                {
+                    outputPath = outputPath,
+                    logoThreshold = logoThreshold,
+                    sceneThreshold = sceneThreshold,
+                    blankThreshold = blankThreshold,
+                    minDuration = TimeSpan.FromSeconds(minDuration),
+                    forceReload = reload,
+                }
                 ));
             }
             catch (Exception ex)
