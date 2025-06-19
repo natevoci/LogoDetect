@@ -23,7 +23,61 @@ public unsafe class VideoProcessor : IDisposable
         _forceReload = forceReload;
     }
 
-    public List<LogoDetection> DetectLogoFramesWithEdgeDetection(double logoThreshold, IProgress<double>? progress = null)
+    public void ProcessVideo(
+        double logoThreshold,
+        double sceneThreshold,
+        double blankThreshold,
+        TimeSpan minDuration,
+        string outputPath,
+        string? sceneChangesPath = null)
+    {
+        // Edge detection method
+        Console.WriteLine("Detecting logo frames with edge detection...");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var logoDetections = DetectLogoFramesWithEdgeDetection(logoThreshold, new Progress<double>(p =>
+        {
+            Console.Write($"\rProgress: {p:F1}%".PadRight(50, ' '));
+        }));
+        stopwatch.Stop();
+        Console.WriteLine($"\nLogo frames detected in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        // Generate segments based on logo detections
+        Console.WriteLine("Generating segments...");
+        stopwatch.Restart();
+        var segments = new List<LogoDetect.Models.VideoSegment>();
+        segments.AddRange(GenerateSegments(logoDetections, logoThreshold, minDuration));
+        File.WriteAllLines(Path.ChangeExtension(outputPath, "-edge.csv"), segments.Select(s => s.ToString()));
+        stopwatch.Stop();
+        Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        // Scene changes
+        Console.WriteLine("Processing scene changes and blank scenes...");
+        stopwatch.Restart();
+        var scenePath = sceneChangesPath ?? Path.ChangeExtension(_mediaFile.FilePath, ".scenechanges.csv");
+        ProcessSceneChanges(
+            scenePath,
+            sceneThreshold,
+            blankThreshold,
+            new Progress<double>(p =>
+            {
+                Console.Write($"\rProgress: {p:F1}%".PadRight(50, ' '));
+                if (p >= 100) Console.WriteLine();
+            })
+        );
+        stopwatch.Stop();
+        Console.WriteLine($"\nScene changes processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        // Write segments to CSV file
+        stopwatch.Restart();
+        File.WriteAllLines(outputPath, segments.Select(s => s.ToString()));
+        stopwatch.Stop();
+        Console.WriteLine($"CSV file written in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+        Console.WriteLine("Processing complete!");
+        Console.WriteLine($"CSV file written to: {outputPath}");
+    }
+
+    private List<LogoDetection> DetectLogoFramesWithEdgeDetection(double logoThreshold, IProgress<double>? progress = null)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -207,12 +261,12 @@ public unsafe class VideoProcessor : IDisposable
         return logoDetections;
     }
 
-    public void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
+    private void SaveGraphOfLogoDetections(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections)
     {
         SaveGraphOfLogoDetectionsWithMethod(logoThreshold, durationTimeSpan, logoDetections, "edge");
     }
 
-    public void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)
+    private void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)
     {
         var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, $".logodifferences.{method}.png");
 
@@ -275,7 +329,7 @@ public unsafe class VideoProcessor : IDisposable
         plot.SavePng(graphFilePath, 2000, 1000);
     }
 
-    public List<VideoSegment> GenerateSegments(
+    private List<VideoSegment> GenerateSegments(
         List<LogoDetection> logoDetections,
         double logoThreshold,
         TimeSpan minDuration)
@@ -321,7 +375,7 @@ public unsafe class VideoProcessor : IDisposable
         return segments;
     }
 
-    public List<VideoSegment> ExtendSegmentsToSceneChanges(
+    private List<VideoSegment> ExtendSegmentsToSceneChanges(
         List<VideoSegment> segments,
         double sceneThreshold,
         IProgress<double>? progress = null)
@@ -367,7 +421,7 @@ public unsafe class VideoProcessor : IDisposable
         return result;
     }
     
-    public void ProcessSceneChanges(string outputPath, double sceneThreshold, double blankThreshold, IProgress<double>? progress = null)
+    private void ProcessSceneChanges(string outputPath, double sceneThreshold, double blankThreshold, IProgress<double>? progress = null)
     {
         var duration = _mediaFile.GetDuration();
         var sceneChanges = new List<(TimeSpan Time, double ChangeAmount, string Type)>();
