@@ -3,6 +3,8 @@ using LogoDetect.Models;
 using MathNet.Numerics.LinearAlgebra;
 using SkiaSharp;
 using ScottPlot;
+using System.Runtime.Versioning;
+using System.Threading.Tasks;
 
 namespace LogoDetect.Services;
 
@@ -17,7 +19,7 @@ public class VideoProcessorSettings
     public bool forceReload;
 }
 
-public unsafe class VideoProcessor : IDisposable
+public class VideoProcessor : IDisposable
 {
     private readonly ImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
@@ -28,14 +30,14 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile = new MediaFile(inputPath);
     }
 
-    public void ProcessVideo(VideoProcessorSettings settings)
+    public async Task ProcessVideo(VideoProcessorSettings settings)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         var logoDetectionProcessor = new LogoDetectionFrameProcessor(settings, _mediaFile, _imageProcessor);
         var sceneChangeProcessor = new SceneChangeFrameProcessor(settings, _mediaFile, _imageProcessor);
 
-        ProcessFrames(
+        await ProcessFrames(
             [
                 logoDetectionProcessor,
                 sceneChangeProcessor
@@ -65,7 +67,7 @@ public unsafe class VideoProcessor : IDisposable
         Console.WriteLine($"CSV file written to: {settings.outputPath}");
     }
 
-    private void ProcessFrames(IEnumerable<IFrameProcessor> processors, IProgressMsg? progress = null)
+    private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, IProgressMsg? progress = null)
     {
         var duration = _mediaFile.GetDuration();
 
@@ -75,12 +77,12 @@ public unsafe class VideoProcessor : IDisposable
         }
 
         Frame? previous = null;
-        foreach (var frame in GetFramesToAnalyze(false))
+        await foreach (var frame in GetFramesToAnalyze(false))
         {
-            foreach (var processor in processors)
+            Parallel.ForEach(processors, processor =>
             {
                 processor.ProcessFrame(frame, previous);
-            }
+            });
             previous = frame;
             progress?.Report((double)frame.Timestamp / duration * 100, "Processing video for logos, scene changes, and blank scenes");
         }
@@ -190,29 +192,45 @@ public unsafe class VideoProcessor : IDisposable
         _mediaFile?.Dispose();
     }
 
-    private IEnumerable<Frame> GetFramesToAnalyze(bool onlyUseKeyFrames = false)
+    private async IAsyncEnumerable<Frame> GetFramesToAnalyze(bool onlyUseKeyFrames = false)
     {
         var duration = _mediaFile.GetDuration();
 
-        var frame = _mediaFile.GetFrameAtTimestamp(0);
+        int nextSecond = 0;
+
+        var (frame, second) = await GetNextFrameToAnalyzeAsync(null, duration, onlyUseKeyFrames, nextSecond);
         if (frame == null)
             yield break; // No frames to analyze
-
-        int nextSecond = 0;
+        nextSecond = second + 1;
 
         while (frame != null && frame.Timestamp < duration)
         {
-            if (frame.TimeSpan.TotalSeconds < nextSecond)
+            var task = GetNextFrameToAnalyzeAsync(frame, duration, onlyUseKeyFrames, nextSecond);
+            yield return frame;
+            (frame, second) = await task;
+            nextSecond = second + 1;
+        }
+    }
+
+    private Task<(Frame?, int)> GetNextFrameToAnalyzeAsync(Frame? frame, long duration, bool onlyUseKeyFrames, int nextSecond)
+    {
+        return Task.Run<(Frame?, int)>(() =>
+        {
+            if (frame == null)
             {
-                frame = _mediaFile.ReadNextFrame(onlyUseKeyFrames);
-                continue; // Skip frames until we reach the next second
+                frame = _mediaFile.GetFrameAtTimeSpan(TimeSpan.FromSeconds(nextSecond));
+                if (frame == null)
+                    return (null, nextSecond); // No frames to analyze
             }
 
-            yield return frame;
+            while (frame != null && frame.Timestamp < duration && frame.TimeSpan.TotalSeconds < nextSecond)
+            {
+                // Skip frames until we reach the next second
+                frame = _mediaFile.ReadNextFrame(onlyUseKeyFrames);
+            }
 
-            frame = _mediaFile.ReadNextFrame(onlyUseKeyFrames);
-            nextSecond++;
-        }
+            return (frame, nextSecond);
+        });
     }
 
     private IEnumerable<Frame> GetFramesToAnalyzeBySeeking()

@@ -164,6 +164,11 @@ public unsafe class MediaFile : IDisposable
         return null;
     }
 
+    public Task<Frame?> ReadNextFrameAsync(bool onlyKeyFrames = false, CancellationToken cancellationToken = default)
+    {
+        return Task.Run(() => ReadNextFrame(onlyKeyFrames), cancellationToken);
+    }
+
     public Frame? ReadNextKeyFrame()
     {
         return ReadNextFrame(onlyKeyFrames: true);
