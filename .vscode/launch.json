@@ -8,6 +8,7 @@
             "name": "C#: LogoDetect Debug",
             "type": "coreclr",
             "request": "launch",
+            "console": "integratedTerminal",
             "program": "${workspaceFolder}/LogoDetect/bin/Debug/net8.0/LogoDetect.dll",
             "args": [
                 "--input",
