@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>LogoDetect</id>
+    <version>0.0.0</version>
+    <title>LogoDetect</title>
+    <authors>LogoDetect</authors>
+    <description>Video logo detection and segmentation tool</description>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+  </metadata>
+  <files>
+    <file src="publish\**" target="lib\net8.0" />
+  </files>
+</package>

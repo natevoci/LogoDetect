@@ -1,12 +1,35 @@
 ﻿using System.CommandLine;
 using LogoDetect.Services;
+using Velopack;
 
 namespace LogoDetect;
 
 public class Program
 {
+    private const string GithubOwner = "natevoci";
+    private const string GithubRepo = "LogoDetect";
+
     public static async Task<int> Main(string[] args)
     {
+        // Check for updates using Velopack
+        try
+        {
+            var updateSource = $"https://github.com/{GithubOwner}/{GithubRepo}/releases/latest/download/";
+            var mgr = new UpdateManager(updateSource);
+            var result = await mgr.CheckForUpdatesAsync();
+            if (result?.TargetFullRelease != null)
+            {
+                Console.WriteLine($"Updating to version {result.TargetFullRelease.Version}");
+                await Task.Run(() => mgr.ApplyUpdatesAndRestart(result));
+                Console.WriteLine("Update complete! Please restart the application.");
+                return 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Update check failed: {ex.Message}");
+        }
+
         var inputOption = new Option<FileInfo>(
             name: "--input",
             description: "Input video file path (only MP4 supported)")

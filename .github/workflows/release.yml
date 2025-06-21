@@ -1,0 +1,72 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    env:
+      Solution_Name: LogoDetect.sln
+      Project_Path: LogoDetect/LogoDetect.csproj
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.Solution_Name }}
+
+    - name: Build
+      run: dotnet build ${{ env.Solution_Name }} --configuration Release --no-restore
+
+    - name: Publish
+      run: dotnet publish ${{ env.Project_Path }} --configuration Release --no-build --output publish
+
+    - name: Create NuGet Package
+      run: |
+        nuget pack LogoDetect.nuspec -Version ${env:GITHUB_REF_NAME.substring(1)} -Properties Configuration=Release -OutputDirectory nupkg
+
+    - name: Create Squirrel Release
+      run: |
+        squirrel --releasify nupkg\LogoDetect.${env:GITHUB_REF_NAME.substring(1)}.nupkg --no-msi
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: Releases/RELEASES
+        asset_name: RELEASES
+        asset_content_type: application/octet-stream
+
+    - name: Upload Setup
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: Releases/Setup.exe
+        asset_name: Setup.exe
+        asset_content_type: application/vnd.microsoft.portable-executable
