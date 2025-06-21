@@ -9,18 +9,26 @@ public class Program
     private const string GithubOwner = "natevoci";
     private const string GithubRepo = "LogoDetect";
 
-    public static async Task<int> Main(string[] args)
+    public static int Main(string[] args)
     {
         // Check for updates using Velopack
+        VelopackApp.Build().Run();
         try
         {
             var updateSource = $"https://github.com/{GithubOwner}/{GithubRepo}/releases/latest/download/";
             var mgr = new UpdateManager(updateSource);
-            var result = await mgr.CheckForUpdatesAsync();
-            if (result?.TargetFullRelease != null)
+
+            // check for new version
+            var newVersion = mgr.CheckForUpdates();
+            if (newVersion != null)
             {
-                Console.WriteLine($"Updating to version {result.TargetFullRelease.Version}");
-                await Task.Run(() => mgr.ApplyUpdatesAndRestart(result));
+                Console.WriteLine($"Updating to version {newVersion.TargetFullRelease.Version}");
+
+                // download new version
+                mgr.DownloadUpdates(newVersion);
+
+                // install new version and restart app
+                mgr.ApplyUpdatesAndRestart(newVersion);
                 Console.WriteLine("Update complete! Please restart the application.");
                 return 0;
             }
@@ -76,7 +84,7 @@ public class Program
             outputOption
         };
 
-        rootCommand.SetHandler(async (input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output) =>
+        rootCommand.SetHandler((input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output) =>
         {
             try
             {
@@ -103,7 +111,7 @@ public class Program
                 stopwatch.Stop();
                 Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-                await Task.Run(() => videoProcessor.ProcessVideo(new VideoProcessorSettings()
+                Task.Run(() => videoProcessor.ProcessVideo(new VideoProcessorSettings()
                 {
                     outputPath = outputPath,
                     logoThreshold = logoThreshold,
@@ -121,6 +129,6 @@ public class Program
             }
         }, inputOption, logoThresholdOption, reloadOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption);
 
-        return await rootCommand.InvokeAsync(args);
+        return rootCommand.Invoke(args);
     }
 }

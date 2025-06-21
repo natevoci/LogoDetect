@@ -31,6 +31,29 @@
 				"panel": "shared"
 			},
 			"dependsOn": ["dotnet: build"]
+		},
+		{
+			"label": "build: publish",
+			"type": "shell",
+			"command": "dotnet publish LogoDetect/LogoDetect.csproj --self-contained -r win-x64 -o LogoDetect\\publish",
+			"group": "build",
+			"problemMatcher": ["$msCompile"],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			}
+		},
+		{
+			"label": "build: installer",
+			"type": "shell",
+			"command": "vpk pack --packId natevoci.LogoDetect --packVersion 1.0.0 --packDir LogoDetect/publish --mainExe LogoDetect.exe --yes --skip-updates",
+			"group": "build",
+			"problemMatcher": ["$msCompile"],
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"dependsOn": ["build: publish"]
 		}
 	]
 }

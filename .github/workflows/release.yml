@@ -30,15 +30,14 @@ jobs:
       run: dotnet build ${{ env.Solution_Name }} --configuration Release --no-restore
 
     - name: Publish
-      run: dotnet publish ${{ env.Project_Path }} --configuration Release --no-build --output publish
+      run: dotnet publish ${{ env.Project_Path }} --self-contained -r win-x64 -o LogoDetect/publish
 
-    - name: Create NuGet Package
-      run: |
-        nuget pack LogoDetect.nuspec -Version ${env:GITHUB_REF_NAME.substring(1)} -Properties Configuration=Release -OutputDirectory nupkg
+    - name: Install Velopack CLI
+      run: dotnet tool install --global vpk
 
-    - name: Create Squirrel Release
+    - name: Create Velopack Release
       run: |
-        squirrel --releasify nupkg\LogoDetect.${env:GITHUB_REF_NAME.substring(1)}.nupkg --no-msi
+        vpk pack --packId natevoci.LogoDetect --packVersion ${env:GITHUB_REF_NAME.substring(1)} --packDir LogoDetect/publish --mainExe LogoDetect.exe
 
     - name: Create Release
       id: create_release
@@ -57,8 +56,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: Releases/RELEASES
-        asset_name: RELEASES
+        asset_path: Releases
+        asset_name: Releases
         asset_content_type: application/octet-stream
 
     - name: Upload Setup
@@ -67,6 +66,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: Releases/Setup.exe
-        asset_name: Setup.exe
+        asset_path: Releases/natevoci.LogoDetect-win-Setup.exe
+        asset_name: natevoci.LogoDetect-win-Setup.exe
         asset_content_type: application/vnd.microsoft.portable-executable

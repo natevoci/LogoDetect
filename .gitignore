@@ -2,3 +2,5 @@
 /LogoDetect/obj
 TestSamples/
 /.vs
+/LogoDetect/publish
+/Releases
