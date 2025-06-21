@@ -1,14 +1,14 @@
 # LogoDetect
 
-A .NET 8 command-line tool for detecting TV channel logos in video files and generating EDL (Edit Decision List) files for commercial break detection.
+A .NET 8 command-line tool for detecting TV channel logos in video files and generating CSV cut lists for commercial break detection, compatible with LosslessCut.
 
 ## Features
 
 - Automatic logo detection using edge detection and frame comparison
 - Hardware-accelerated video processing (NVIDIA CUDA or Intel QuickSync when available)
 - GPU-accelerated image processing using CUDA (when available)
-- Scene change detection for accurate cut points
-- EDL file generation for post-processing
+- Scene change detection for accurate cut points (Not yet working)
+- CSV file generation for post-processing in LosslessCut
 
 ## Requirements
 
@@ -33,11 +33,13 @@ LogoDetect.exe --input <video-file> [options]
 
 ### Command Line Options
 
-- `--input <path>` (Required): Path to the input video file (supports mp4, ts, and other FFmpeg-supported formats)
-- `--logo-threshold <value>` (Optional): Logo detection threshold (0.0-1.0, default: 0.3)
+- `--input <path>` (Required): Path to the input video file (only MP4 works well)
+- `--logo-threshold <value>` (Optional): Logo detection threshold (default: 1.0)
+- `--reload` (Optional): Force reprocessing of video frames, ignoring cached results (default: false)
 - `--scene-change-threshold <value>` (Optional): Scene change detection threshold (0.0-1.0, default: 0.2)
-- `--min-duration <seconds>` (Optional): Minimum duration for detected segments in seconds (default: 60)
-- `--output <path>` (Optional): Output EDL file path (defaults to input filename with .edl extension)
+- `--black-frame-threshold <value>` (Optional): Black frame detection threshold (0.0-1.0, lower values require darker pixels, default: 0.1)
+- `--min-duration <seconds>` (Optional): Minimum cut duration in seconds (default: 60)
+- `--output <path>` (Optional): Output CSV file path (defaults to input filename with `.segments.csv` extension)
 
 ### Examples
 
@@ -48,22 +50,22 @@ LogoDetect.exe --input "C:\Videos\tv-recording.mp4"
 
 Custom thresholds and minimum duration:
 ```powershell
-LogoDetect.exe --input "C:\Videos\tv-recording.mp4" --logo-threshold 0.25 --scene-change-threshold 0.15 --min-duration 45
+LogoDetect.exe --input "C:\Videos\tv-recording.mp4" --logo-threshold 1.25 --scene-change-threshold 0.15 --min-duration 45
 ```
 
 Specify output file:
 ```powershell
-LogoDetect.exe --input "C:\Videos\tv-recording.mp4" --output "C:\EDL\commercials.edl"
+LogoDetect.exe --input "C:\Videos\tv-recording.mp4" --output "C:\CutLists\commercials.segments.csv"
 ```
 
 ## How It Works
 
-1. The tool samples frames from the video at regular intervals to create a logo reference image
-2. Edge detection is performed on the reference image and subsequent frames
-3. Frames are compared against the reference to detect logo presence/absence
+1. The tool samples frames from the video at regular intervals to create a logo reference image which is the average of edge detections
+2. Edge detection is performed on frames every second in the file, with a rolling average over 30 seconds
+3. Rolling averages are compared against the reference to detect logo presence/absence
 4. Scene changes are detected to improve cut point accuracy
-5. Segments without logos (potential commercial breaks) are identified
-6. An EDL file is generated with the detected segments
+5. Segments with logos are identified
+6. A CSV file is generated with the detected segments, ready for import into LosslessCut
 
 ## Performance Optimization
 
@@ -74,37 +76,38 @@ LogoDetect.exe --input "C:\Videos\tv-recording.mp4" --output "C:\EDL\commercials
 - Uses CUDA for matrix operations in image processing when available
 - Processes frames sequentially to minimize memory usage
 
-## EDL File Format
+## CSV File Format for LosslessCut
 
-The generated EDL file follows the standard CMX3600 format:
+The generated CSV file is compatible with LosslessCut's cut list import:
 ```
-HH:MM:SS:FF HH:MM:SS:FF C Logo Segment
+start,end
+00:00:00.000,00:10:23.500
+00:12:00.000,00:22:15.000
+...etc
 ```
 
 Where:
-- First timestamp is the start of the segment
-- Second timestamp is the end of the segment
-- 'C' indicates a cut
+- Each row represents a segment to keep (logo present)
+- Timestamps are in `HH:MM:SS.sss` format
 
 ## Limitations
 
 - Logo detection works best with static, opaque logos
 - Very small or transparent logos may be harder to detect
 - Accuracy depends on logo consistency and video quality
-- Some older video formats may not support hardware acceleration
 
 ## Development
 
 ### Building from Source
 
 1. Clone the repository
-2. Open the solution in Visual Studio 2022 or later
+2. Open the solution in Visual Studio 2022 or later, or vscode
 3. Restore NuGet packages
 4. Build the solution
 
 ### Prerequisites for Development
 
-- Visual Studio 2022 or later
+- Visual Studio 2022 or later, or vscode
 - .NET 8.0 SDK
 - C# development workload
 - (Optional) CUDA SDK for GPU acceleration development

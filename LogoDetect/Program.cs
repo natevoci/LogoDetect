@@ -40,7 +40,7 @@ public class Program
 
         var inputOption = new Option<FileInfo>(
             name: "--input",
-            description: "Input video file path (only MP4 supported)")
+            description: "Input video file path (only MP4 works well)")
         { IsRequired = true };
 
         var logoThresholdOption = new Option<double>(
