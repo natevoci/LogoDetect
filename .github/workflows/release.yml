@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -19,7 +22,7 @@ jobs:
       shell: bash
       run: |
         VERSION=$(echo "${GITHUB_REF_NAME}" | cut -c2-)
-        echo "::set-output name=version::$VERSION"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - uses: actions/checkout@v3  
       with:
@@ -42,10 +45,6 @@ jobs:
     - name: Install Velopack CLI  
       run: dotnet tool install --global vpk
   
-    - name: Log Velopack Command
-      run: |
-        echo vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
-
     - name: Create Velopack Release
       run: |
         vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
