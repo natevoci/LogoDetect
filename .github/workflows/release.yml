@@ -14,34 +14,41 @@ jobs:
       Project_Path: LogoDetect/LogoDetect.csproj
 
     steps:
-    - uses: actions/checkout@v3
+    - name: Extract Version
+      id: extract_version
+      shell: bash
+      run: |
+        VERSION=$(echo "${GITHUB_REF_NAME}" | cut -c2-)
+        echo "::set-output name=version::$VERSION"
+
+    - uses: actions/checkout@v3  
       with:
         fetch-depth: 0
 
-    - name: Setup .NET
+    - name: Setup .NET    
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: '8.0.x'
 
-    - name: Restore dependencies
+    - name: Restore dependencies    
       run: dotnet restore ${{ env.Solution_Name }}
 
-    - name: Build
+    - name: Build  
       run: dotnet build ${{ env.Solution_Name }} --configuration Release --no-restore
 
-    - name: Publish
+    - name: Publish  
       run: dotnet publish ${{ env.Project_Path }} --self-contained -r win-x64 -o LogoDetect/publish
 
-    - name: Install Velopack CLI
+    - name: Install Velopack CLI  
       run: dotnet tool install --global vpk
-
+  
     - name: Log Velopack Command
       run: |
-        echo vpk pack --packId "natevoci.LogoDetect" --packVersion "${env:GITHUB_REF_NAME.substring(1)}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
+        echo vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
 
     - name: Create Velopack Release
       run: |
-        vpk pack --packId "natevoci.LogoDetect" --packVersion "${env:GITHUB_REF_NAME.substring(1)}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
+        vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
 
     - name: Create Release
       id: create_release
