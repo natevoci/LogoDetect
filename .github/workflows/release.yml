@@ -42,6 +42,11 @@ jobs:
     - name: Publish  
       run: dotnet publish ${{ env.Project_Path }} --self-contained -r win-x64 -o LogoDetect/publish
 
+    - name: Log Publish Directory Listing
+      run: |
+        echo "Contents of LogoDetect/publish:"
+        dir /b /s LogoDetect/publish
+
     - name: Install Velopack CLI  
       run: dotnet tool install --global vpk
   
@@ -49,33 +54,20 @@ jobs:
       run: |
         vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Log Releases Directory Listing
+      run: |
+        echo "Contents of LogoDetect/Releases:"
+        dir /b /s LogoDetect/Releases
+
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        name: Release ${{ steps.extract_version.outputs.version }}
         draft: false
         prerelease: false
-
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
+        files: |
+          Releases/*
+          Releases/natevoci.LogoDetect-win-Setup.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: Releases
-        asset_name: Releases
-        asset_content_type: application/octet-stream
-
-    - name: Upload Setup
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: Releases/natevoci.LogoDetect-win-Setup.exe
-        asset_name: natevoci.LogoDetect-win-Setup.exe
-        asset_content_type: application/vnd.microsoft.portable-executable
