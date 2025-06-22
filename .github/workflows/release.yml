@@ -35,9 +35,13 @@ jobs:
     - name: Install Velopack CLI
       run: dotnet tool install --global vpk
 
+    - name: Log Velopack Command
+      run: |
+        echo vpk pack --packId "natevoci.LogoDetect" --packVersion "${env:GITHUB_REF_NAME.substring(1)}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
+
     - name: Create Velopack Release
       run: |
-        vpk pack --packId natevoci.LogoDetect --packVersion ${env:GITHUB_REF_NAME.substring(1)} --packDir LogoDetect/publish --mainExe LogoDetect.exe
+        vpk pack --packId "natevoci.LogoDetect" --packVersion "${env:GITHUB_REF_NAME.substring(1)}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
 
     - name: Create Release
       id: create_release
