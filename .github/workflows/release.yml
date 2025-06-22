@@ -47,7 +47,7 @@ jobs:
   
     - name: Create Velopack Release
       run: |
-        vpk pack --packId "natevoci.LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
+        vpk pack --packId "LogoDetect" --packVersion "${{ steps.extract_version.outputs.version }}" --packDir "LogoDetect/publish" --mainExe "LogoDetect.exe"
 
     - name: Log Releases Directory Listing
       run: |
@@ -63,6 +63,5 @@ jobs:
         prerelease: false
         files: |
           Releases/*
-          Releases/natevoci.LogoDetect-win-Setup.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -46,7 +46,7 @@
 		{
 			"label": "build: installer",
 			"type": "shell",
-			"command": "vpk pack --packId natevoci.LogoDetect --packVersion 1.0.0 --packDir LogoDetect/publish --mainExe LogoDetect.exe --yes --skip-updates",
+			"command": "vpk pack --packId LogoDetect --packVersion 1.0.0 --packDir LogoDetect/publish --mainExe LogoDetect.exe --yes --skip-updates",
 			"group": "build",
 			"problemMatcher": ["$msCompile"],
 			"presentation": {
