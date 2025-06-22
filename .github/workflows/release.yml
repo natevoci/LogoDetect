@@ -42,11 +42,6 @@ jobs:
     - name: Publish  
       run: dotnet publish ${{ env.Project_Path }} --self-contained -r win-x64 -o LogoDetect/publish
 
-    - name: Log Publish Directory Listing
-      run: |
-        echo "Contents of LogoDetect/publish:"
-        dir /b /s LogoDetect/publish
-
     - name: Install Velopack CLI  
       run: dotnet tool install --global vpk
   
@@ -57,7 +52,7 @@ jobs:
     - name: Log Releases Directory Listing
       run: |
         echo "Contents of LogoDetect/Releases:"
-        dir /b /s LogoDetect/Releases
+        dir /b /s LogoDetect
 
     - name: Create Release and Upload Assets
       uses: softprops/action-gh-release@v2
