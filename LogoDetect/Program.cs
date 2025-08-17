@@ -120,7 +120,9 @@ public class Program
                     minDuration = TimeSpan.FromSeconds(minDuration),
                     forceReload = reload,
                 }
-                ));
+                )).Wait();
+
+                Console.WriteLine("Video processing complete.");
             }
             catch (Exception ex)
             {

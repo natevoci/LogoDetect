@@ -4,3 +4,4 @@ TestSamples/
 /.vs
 /LogoDetect/publish
 /Releases
+/LogoDetect/Properties/launchSettings.json
