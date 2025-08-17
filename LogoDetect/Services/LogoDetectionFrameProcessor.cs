@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using MathNet.Numerics.LinearAlgebra;
 using LogoDetect.Models;
 using ScottPlot;
@@ -15,6 +16,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private readonly ImageProcessor _imageProcessor;
 
     private YData? _logoReference;
+    private Rectangle _logoBoundingRect;
     private readonly List<LogoDetection> _logoDetections = new();
     private readonly Queue<Matrix<float>> _rollingEdgeMaps = new();
     private readonly Queue<TimeSpan> _rollingEdgeTimeSpans = new();
@@ -57,6 +59,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
 
         GenerateLogoReference(progress);
+        AnalyzeLogoBoundingRect();
 
         _initialized = true;
     }
@@ -77,7 +80,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             _sumMatrix = _sumMatrix.Subtract(oldestMatrix);
         }
         var averageEdgeMap = _sumMatrix.Divide(_rollingEdgeMaps.Count);
-        var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap);
+        var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap, _logoBoundingRect);
         var logoTimeSpan = current.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxSecondsInRollingAverage / 2.0));
         if (logoTimeSpan >= TimeSpan.Zero)
         {
@@ -114,10 +117,13 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         var referenceMatrix = Matrix<float>.Build.Dense(height, width);
         var framesProcessed = 0;
 
-        // Sample 250 frames evenly spaced from 10% to 75% of the video duration
-        for (int i = 0; i < 250; i++)
+        // Sample 250 frames evenly spaced from 10% to 70% of the video duration
+        var startPercentage = 0.1;
+        var endPercentage = 0.70;
+        var GetFramesToAnalyze = 500;
+        for (int i = 0; i < GetFramesToAnalyze; i++)
         {
-            var timestamp = (long)(duration * (i / 250.0) * 0.65 + (duration * 0.1));
+            var timestamp = (long)(duration * (i / (double)GetFramesToAnalyze) * (endPercentage - startPercentage) + (duration * startPercentage));
             var timeSpan = TimeSpanExtensions.FromTimestamp(timestamp);
             frame = _mediaFile.GetFrameAtTimestamp(timestamp);
             if (frame != null)
@@ -141,7 +147,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             }
 
             // Report progress as a percentage (0-100)
-            progress?.Report(i / 249.0 * 100, "Finding Logo");
+            progress?.Report(i / (double)(GetFramesToAnalyze - 1) * 100, "Finding Logo");
         }
 
         // Divide by number of frames using hardware acceleration
@@ -159,6 +165,95 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         // Create logo CSV file
         _logoReference.SaveToCSV(csvFilePath);
         _debugFileTracker?.Invoke(csvFilePath);
+    }
+
+    private void AnalyzeLogoBoundingRect()
+    {
+        if (_logoReference == null)
+            return;
+
+        var matrix = _logoReference.MatrixData;
+        var baseValue = 127.0f;
+        var threshold = 0.2f * baseValue; // Threshold for deviation from base value
+        
+        int minX = _width, maxX = 0, minY = _height, maxY = 0;
+        bool logoFound = false;
+
+        // Find the bounding rectangle by scanning for pixels that deviate significantly from the base value
+        for (int y = 0; y < _height; y++)
+        {
+            for (int x = 0; x < _width; x++)
+            {
+                var deviation = Math.Abs(matrix[y, x] - baseValue);
+                if (deviation > threshold)
+                {
+                    logoFound = true;
+                    minX = Math.Min(minX, x);
+                    maxX = Math.Max(maxX, x);
+                    minY = Math.Min(minY, y);
+                    maxY = Math.Max(maxY, y);
+                }
+            }
+        }
+
+        if (logoFound)
+        {
+            // Add some padding to the bounding rectangle
+            var padding = 10;
+            _logoBoundingRect = new Rectangle(
+                Math.Max(0, minX - padding),
+                Math.Max(0, minY - padding),
+                Math.Min(_width - 1, maxX + padding) - Math.Max(0, minX - padding),
+                Math.Min(_height - 1, maxY + padding) - Math.Max(0, minY - padding)
+            );
+
+            SaveLogoBoundingVisualization();
+        }
+        else
+        {
+            // If no logo found, use the entire frame
+            _logoBoundingRect = new Rectangle(0, 0, _width, _height);
+        }
+    }
+
+    private void SaveLogoBoundingVisualization()
+    {
+        if (_logoReference == null)
+            return;
+
+        var boundingPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.bounding.png");
+        
+        // Create a copy of the logo reference for visualization
+        var visualMatrix = _logoReference.MatrixData.Clone();
+        
+        // Draw the bounding rectangle on the visualization
+        // Top and bottom horizontal lines
+        for (int x = _logoBoundingRect.Left; x < _logoBoundingRect.Right; x++)
+        {
+            if (x >= 0 && x < _width)
+            {
+                if (_logoBoundingRect.Top >= 0 && _logoBoundingRect.Top < _height)
+                    visualMatrix[_logoBoundingRect.Top, x] = 255.0f; // White line
+                if (_logoBoundingRect.Bottom - 1 >= 0 && _logoBoundingRect.Bottom - 1 < _height)
+                    visualMatrix[_logoBoundingRect.Bottom - 1, x] = 255.0f; // White line
+            }
+        }
+        
+        // Left and right vertical lines
+        for (int y = _logoBoundingRect.Top; y < _logoBoundingRect.Bottom; y++)
+        {
+            if (y >= 0 && y < _height)
+            {
+                if (_logoBoundingRect.Left >= 0 && _logoBoundingRect.Left < _width)
+                    visualMatrix[y, _logoBoundingRect.Left] = 255.0f; // White line
+                if (_logoBoundingRect.Right - 1 >= 0 && _logoBoundingRect.Right - 1 < _width)
+                    visualMatrix[y, _logoBoundingRect.Right - 1] = 255.0f; // White line
+            }
+        }
+
+        var boundingVisualization = new YData(visualMatrix);
+        boundingVisualization.SaveBitmapToFile(boundingPath);
+        _debugFileTracker?.Invoke(boundingPath);
     }
 
     private void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)

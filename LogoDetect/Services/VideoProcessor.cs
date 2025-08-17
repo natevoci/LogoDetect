@@ -55,9 +55,9 @@ public class VideoProcessor : IDisposable
         stopwatch.Restart();
         var segments = new List<LogoDetect.Models.VideoSegment>();
         segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, settings.logoThreshold, settings.minDuration));
-        var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "-edge.csv");
-        File.WriteAllLines(edgeCsvPath, segments.Select(s => s.ToString()));
-        _debugFiles.Add(edgeCsvPath);
+        // var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "edge.csv");
+        // File.WriteAllLines(edgeCsvPath, segments.Select(s => s.ToString()));
+        // _debugFiles.Add(edgeCsvPath);
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 

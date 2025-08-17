@@ -1,4 +1,5 @@
 using SkiaSharp;
+using System.Drawing;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Statistics;
 using System.Runtime.InteropServices;
@@ -120,6 +121,31 @@ public class ImageProcessor
 
         var currentSignal = reference.PointwiseMultiply(current).PointwiseAbs().Enumerate().Sum();
         var maxSignal = reference.PointwiseMultiply(reference).PointwiseAbs().Enumerate().Sum();
+
+        return currentSignal / maxSignal;
+    }
+
+    public float CompareEdgeData(Matrix<float> reference, Matrix<float> current, Rectangle boundingRect)
+    {
+        // Extract submatrices based on the bounding rectangle
+        var refSubMatrix = reference.SubMatrix(
+            boundingRect.Top, 
+            boundingRect.Height, 
+            boundingRect.Left, 
+            boundingRect.Width);
+        
+        var currentSubMatrix = current.SubMatrix(
+            boundingRect.Top, 
+            boundingRect.Height, 
+            boundingRect.Left, 
+            boundingRect.Width);
+
+        // Move matrix values to a zero centered range
+        refSubMatrix = refSubMatrix.Subtract(byte.MaxValue / 2.0f);
+        currentSubMatrix = currentSubMatrix.Subtract(byte.MaxValue / 2.0f);
+
+        var currentSignal = refSubMatrix.PointwiseMultiply(currentSubMatrix).PointwiseAbs().Enumerate().Sum();
+        var maxSignal = refSubMatrix.PointwiseMultiply(refSubMatrix).PointwiseAbs().Enumerate().Sum();
 
         return currentSignal / maxSignal;
     }
