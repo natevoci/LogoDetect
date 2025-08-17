@@ -17,12 +17,14 @@ public class VideoProcessorSettings
     public TimeSpan minDuration;
     public string? sceneChangesPath = null;
     public bool forceReload;
+    public bool keepDebugFiles;
 }
 
 public class VideoProcessor : IDisposable
 {
     private readonly ImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
+    private readonly List<string> _debugFiles = new();
 
     public VideoProcessor(string inputPath)
     {
@@ -53,7 +55,9 @@ public class VideoProcessor : IDisposable
         stopwatch.Restart();
         var segments = new List<LogoDetect.Models.VideoSegment>();
         segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, settings.logoThreshold, settings.minDuration));
-        File.WriteAllLines(Path.ChangeExtension(settings.outputPath, "-edge.csv"), segments.Select(s => s.ToString()));
+        var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "-edge.csv");
+        File.WriteAllLines(edgeCsvPath, segments.Select(s => s.ToString()));
+        _debugFiles.Add(edgeCsvPath);
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
@@ -65,6 +69,24 @@ public class VideoProcessor : IDisposable
 
         Console.WriteLine("Processing complete!");
         Console.WriteLine($"CSV file written to: {settings.outputPath}");
+
+        // Delete debug files if not keeping them
+        if (!settings.keepDebugFiles)
+        {
+            foreach (var file in _debugFiles)
+            {
+                if (!string.Equals(file, settings.outputPath, StringComparison.OrdinalIgnoreCase) && File.Exists(file))
+                {
+                    try { File.Delete(file); } catch { }
+                }
+            }
+        }
+    }
+
+    private void AddDebugFile(string path)
+    {
+        if (!_debugFiles.Contains(path))
+            _debugFiles.Add(path);
     }
 
     private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, IProgressMsg? progress = null)
@@ -73,6 +95,7 @@ public class VideoProcessor : IDisposable
 
         foreach (var processor in processors)
         {
+            processor.SetDebugFileTracker(AddDebugFile);
             processor.Initialize(progress);
         }
 

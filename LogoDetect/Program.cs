@@ -73,6 +73,11 @@ public class Program
             description: "Output CSV file path (defaults to input filename with .csv extension)",
             getDefaultValue: () => null);
 
+        var keepDebugFilesOption = new Option<bool>(
+            name: "--keepDebugFiles",
+            description: "Keep debug files (PNG, CSV, etc.) generated during processing",
+            getDefaultValue: () => false);
+
         var rootCommand = new RootCommand("LogoDetect - Video logo detection and CSV cut list generation tool")
         {
             inputOption,
@@ -81,10 +86,11 @@ public class Program
             sceneChangeThresholdOption,
             blackFrameThresholdOption,
             minDurationOption,
-            outputOption
+            outputOption,
+            keepDebugFilesOption
         };
 
-        rootCommand.SetHandler((input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output) =>
+        rootCommand.SetHandler((input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output, keepDebugFiles) =>
         {
             try
             {
@@ -119,6 +125,7 @@ public class Program
                     blankThreshold = blankThreshold,
                     minDuration = TimeSpan.FromSeconds(minDuration),
                     forceReload = reload,
+                    keepDebugFiles = keepDebugFiles,
                 }
                 )).Wait();
 
@@ -129,7 +136,7 @@ public class Program
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 Environment.Exit(1);
             }
-        }, inputOption, logoThresholdOption, reloadOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption);
+        }, inputOption, logoThresholdOption, reloadOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption, keepDebugFilesOption);
 
         return rootCommand.Invoke(args);
     }

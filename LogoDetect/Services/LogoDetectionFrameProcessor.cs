@@ -22,6 +22,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private int _height;
     private int _width;
     private bool _initialized = false;
+    private Action<string>? _debugFileTracker;
 
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
 
@@ -30,6 +31,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         _settings = settings;
         _mediaFile = mediaFile;
         _imageProcessor = imageProcessor;
+    }
+
+    public void SetDebugFileTracker(Action<string> tracker)
+    {
+        _debugFileTracker = tracker;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -91,6 +97,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         if (File.Exists(csvFilePath) && !_settings.forceReload)
         {
             _logoReference = YData.LoadFromCSV(csvFilePath);
+            _debugFileTracker?.Invoke(csvFilePath);
             return;
         }
 
@@ -116,8 +123,18 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             if (frame != null)
             {
                 var edges = _imageProcessor.DetectEdges(frame.YData);
-                // frame.YData.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.png"));
-                // edges.SaveBitmapToFile(Path.ChangeExtension(logoPath, $".{i}.edges.png"));
+
+                var saveIndividualFrames = false;
+                if (saveIndividualFrames)
+                {
+                    var yDataPath = Path.ChangeExtension(logoPath, $".{i}.png");
+                    frame.YData.SaveBitmapToFile(yDataPath);
+                    _debugFileTracker?.Invoke(yDataPath);
+
+                    var edgesPath = Path.ChangeExtension(logoPath, $".{i}.edges.png");
+                    edges.SaveBitmapToFile(edgesPath);
+                    _debugFileTracker?.Invoke(edgesPath);
+                }
 
                 referenceMatrix = referenceMatrix.Add(edges.MatrixData);
                 framesProcessed++;
@@ -137,9 +154,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         // Convert _logoReference to a bitmap and save to logoPath
         _logoReference.SaveBitmapToFile(logoPath);
+        _debugFileTracker?.Invoke(logoPath);
 
         // Create logo CSV file
         _logoReference.SaveToCSV(csvFilePath);
+        _debugFileTracker?.Invoke(csvFilePath);
     }
 
     private void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)
@@ -203,5 +222,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         // Save the plot
         plot.SavePng(graphFilePath, 2000, 1000);
+        _debugFileTracker?.Invoke(graphFilePath);
     }
 }

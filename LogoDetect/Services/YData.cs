@@ -94,12 +94,28 @@ public class YData
         yData.SaveBitmapToFile(path);
     }
 
+    public static void SaveBitmapToFile(Matrix<float> matrix, string path, Action<string>? debugFileTracker = null)
+    {
+        var yData = new YData(matrix);
+        yData.SaveBitmapToFile(path);
+        debugFileTracker?.Invoke(path);
+    }
+
     public void SaveBitmapToFile(string path)
     {
         using var bitmap = ToBitmap();
         using var stream = File.Create(path);
         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
         data.SaveTo(stream);
+    }
+
+    public void SaveBitmapToFile(string path, Action<string>? debugFileTracker = null)
+    {
+        using var bitmap = ToBitmap();
+        using var stream = File.Create(path);
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        data.SaveTo(stream);
+        debugFileTracker?.Invoke(path);
     }
 
     public static YData LoadFromFile(string path)
@@ -127,11 +143,25 @@ public class YData
         }
     }
 
+    public void SaveToCSV(string path, Action<string>? debugFileTracker = null)
+    {
+        using var writer = new StreamWriter(path);
+        writer.WriteLine($"{_height},{_width}");
+        for (int i = 0; i < _height; i++)
+        {
+            var row = new string[_width];
+            for (int j = 0; j < _width; j++)
+            {
+                row[j] = _matrixData[i, j].ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            }
+            writer.WriteLine(string.Join(",", row));
+        }
+        debugFileTracker?.Invoke(path);
+    }
+
     public static YData LoadFromCSV(string path)
     {
         using var reader = new StreamReader(path);
-
-        // Read dimensions from header
         var dimensions = reader.ReadLine()?.Split(',');
         if (dimensions?.Length != 2 || 
             !int.TryParse(dimensions[0], out int height) || 
@@ -139,11 +169,7 @@ public class YData
         {
             throw new FormatException("Invalid CSV format: First line should contain height,width");
         }
-
-        // Create matrix to hold the data
         var matrix = Matrix<float>.Build.Dense(height, width);
-
-        // Read each row
         for (int i = 0; i < height; i++)
         {
             var line = reader.ReadLine();
@@ -151,13 +177,11 @@ public class YData
             {
                 throw new FormatException($"Invalid CSV format: Missing data at row {i}");
             }
-
             var values = line.Split(',');
             if (values.Length != width)
             {
                 throw new FormatException($"Invalid CSV format: Row {i} has {values.Length} values, expected {width}");
             }
-
             for (int j = 0; j < width; j++)
             {
                 if (!float.TryParse(values[j], System.Globalization.NumberStyles.Float, 
@@ -168,13 +192,6 @@ public class YData
                 matrix[i, j] = value;
             }
         }
-
         return new YData(matrix);
-    }
-
-    public static void SaveMatrixToCSV(Matrix<float> matrix, string path)
-    {
-        var yData = new YData(matrix);
-        yData.SaveToCSV(path);
     }
 }

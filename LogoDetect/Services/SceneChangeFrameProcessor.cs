@@ -11,6 +11,8 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     private readonly ImageProcessor _imageProcessor;
     private readonly List<(TimeSpan Time, double ChangeAmount, string Type)> _sceneChanges = new();
 
+    private Action<string>? _debugFileTracker;
+
     public IReadOnlyList<(TimeSpan Time, double ChangeAmount, string Type)> SceneChanges => _sceneChanges;
 
     public SceneChangeFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, ImageProcessor imageProcessor)
@@ -18,6 +20,11 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         _settings = settings;
         _mediaFile = mediaFile;
         _imageProcessor = imageProcessor;
+    }
+
+    public void SetDebugFileTracker(Action<string> tracker)
+    {
+        _debugFileTracker = tracker;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -64,6 +71,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         // Save visualization of scene changes
         var graphFilePath = Path.ChangeExtension(scenePath, ".png");
         SaveSceneChangeGraph(_sceneChanges.ToList(), graphFilePath);
+        _debugFileTracker?.Invoke(graphFilePath);
     }
     
         private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount, string Type)> sceneChanges, string graphFilePath)
@@ -134,6 +142,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
         // Save the plot
         plot.SavePng(graphFilePath, 2000, 1000);
+        _debugFileTracker?.Invoke(graphFilePath);
     }
 
 }
