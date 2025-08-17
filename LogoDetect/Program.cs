@@ -56,7 +56,7 @@ public class Program
         var sceneChangeThresholdOption = new Option<double>(
             name: "--scene-change-threshold",
             description: "Scene change detection threshold (0.0-1.0)",
-            getDefaultValue: () => 0.2);
+            getDefaultValue: () => 0.05);
 
         var blackFrameThresholdOption = new Option<double>(
             name: "--black-frame-threshold",

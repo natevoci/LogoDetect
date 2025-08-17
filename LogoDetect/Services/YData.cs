@@ -1,5 +1,6 @@
 using SkiaSharp;
 using System.Runtime.InteropServices;
+using System.Numerics;
 using MathNet.Numerics.LinearAlgebra;
 using System.IO;
 
@@ -8,35 +9,45 @@ namespace LogoDetect.Services;
 public class YData
 {
     private readonly Matrix<float> _matrixData;
+    private readonly float[] _floatData;
     private readonly int _width;
     private readonly int _height;
 
     public Matrix<float> MatrixData => _matrixData;
+    public float[] FloatData => _floatData;
     public int Width => _width;
     public int Height => _height;
 
-    public YData(byte[] rawData, int width, int height)
+    public YData(byte[] rawData, int width, int height) : this(rawData, width, height, width)
     {
-        _width = width;
-        _height = height;
-        // Convert byte array to float matrix
-        _matrixData = Matrix<float>.Build.Dense(
-            height,
-            width,
-            (i, j) => rawData[i * width + j]
-        );
     }
 
     public YData(byte[] rawData, int width, int height, int linesize)
     {
         _width = width;
         _height = height;
-        // Convert byte array to float matrix
-        _matrixData = Matrix<float>.Build.Dense(
-            height,
-            width,
-            (i, j) => rawData[i * linesize + j]
-        );
+
+        // Create matrix with proper dimensions (height x width)
+        // Use unsafe bulk operations for maximum performance
+        _floatData = new float[height * width];
+
+        unsafe
+        {
+            fixed (byte* sourcePtr = rawData)
+            fixed (float* destPtr = _floatData)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        destPtr[x * height + y] = sourcePtr[y * linesize + x];
+                    }
+                }
+            }
+        }
+
+        // Create matrix from the float array without additional copying
+        _matrixData = Matrix<float>.Build.Dense(height, width, _floatData);
     }
 
     public YData(Matrix<float> matrix)
@@ -44,6 +55,9 @@ public class YData
         _width = matrix.ColumnCount;
         _height = matrix.RowCount;
         _matrixData = matrix;
+        
+        // Extract float data from matrix
+        _floatData = matrix.ToColumnMajorArray();
     }
 
     public SKBitmap ToBitmap()
@@ -127,10 +141,10 @@ public class YData
     public void SaveToCSV(string path)
     {
         using var writer = new StreamWriter(path);
-        
+
         // Write header with dimensions
         writer.WriteLine($"{_height},{_width}");
-        
+
         // Write matrix data row by row
         for (int i = 0; i < _height; i++)
         {
@@ -163,8 +177,8 @@ public class YData
     {
         using var reader = new StreamReader(path);
         var dimensions = reader.ReadLine()?.Split(',');
-        if (dimensions?.Length != 2 || 
-            !int.TryParse(dimensions[0], out int height) || 
+        if (dimensions?.Length != 2 ||
+            !int.TryParse(dimensions[0], out int height) ||
             !int.TryParse(dimensions[1], out int width))
         {
             throw new FormatException("Invalid CSV format: First line should contain height,width");
@@ -184,7 +198,7 @@ public class YData
             }
             for (int j = 0; j < width; j++)
             {
-                if (!float.TryParse(values[j], System.Globalization.NumberStyles.Float, 
+                if (!float.TryParse(values[j], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out float value))
                 {
                     throw new FormatException($"Invalid CSV format: Could not parse value at row {i}, column {j}");
@@ -194,4 +208,6 @@ public class YData
         }
         return new YData(matrix);
     }
+    
+
 }
