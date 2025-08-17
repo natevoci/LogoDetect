@@ -28,6 +28,10 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="FFmpeg\bin\x64\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <UpdateEnabled>true</UpdateEnabled>
     <UpdateMode>Background</UpdateMode>
