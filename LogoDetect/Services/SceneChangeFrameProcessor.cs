@@ -37,6 +37,10 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         {
             _sceneChanges.Add((current.TimeSpan, 0.0, "black"));
         }
+        else if (_imageProcessor.IsWhiteFrame(current.YData, _settings.blankThreshold))
+        {
+            _sceneChanges.Add((current.TimeSpan, 0.0, "white"));
+        }
         else if (previous != null)
         {
             var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.YData, current.YData);
@@ -49,14 +53,14 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     public void Complete(IProgressMsg? progress = null)
     {
-        var scenePath = _settings.outputPath ?? Path.ChangeExtension(_mediaFile.FilePath, ".scenechanges.csv");
-
+        string directory = _settings.outputPath ?? Path.GetDirectoryName(_mediaFile.FilePath)!;
         // Create the directory if it doesn't exist
-        var directory = Path.GetDirectoryName(scenePath);
-        if (directory != null && !Directory.Exists(directory))
+        if (!Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
         }
+
+        var scenePath = Path.Combine(directory, Path.GetFileNameWithoutExtension(_mediaFile.FilePath) + ".scenechanges.csv");
 
         // Write scene changes to CSV file
         using (var writer = new StreamWriter(scenePath, false))
@@ -74,7 +78,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         _debugFileTracker?.Invoke(graphFilePath);
     }
     
-        private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount, string Type)> sceneChanges, string graphFilePath)
+    private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount, string Type)> sceneChanges, string graphFilePath)
     {
         if (File.Exists(graphFilePath))
         {
@@ -86,34 +90,44 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         // Split data by type
         var sceneChangeData = sceneChanges.Where(x => x.Type == "scene").ToList();
         var blackFrameData = sceneChanges.Where(x => x.Type == "black").ToList();
+        var whiteFrameData = sceneChanges.Where(x => x.Type == "white").ToList();
 
-        // Add scene changes (green)
+        // Add scene changes as columns (green)
         if (sceneChangeData.Any())
         {
-            var sceneChangeLine = plot.Add.Scatter(
+            var sceneChangeColumns = plot.Add.Bars(
                 sceneChangeData.Select(d => d.Time.TotalSeconds).ToArray(),
-                sceneChangeData.Select(d => d.ChangeAmount).ToArray());            sceneChangeLine.LineWidth = 2;
-            sceneChangeLine.Color = new ScottPlot.Color(0, 255, 0);
-            sceneChangeLine.MarkerSize = 0;
+                sceneChangeData.Select(d => d.ChangeAmount).ToArray());
+            sceneChangeColumns.Color = new ScottPlot.Color(0, 255, 0);
             plot.Legend.IsVisible = true;
         }
 
-        // Add blank scenes as vertical lines (red)
-        bool addedBlankLegend = false;
-        foreach (var blackFrame in blackFrameData)
+        // Add black frames as black dots at y=0
+        if (blackFrameData.Any())
         {
-            var verticalLine = plot.Add.VerticalLine(blackFrame.Time.TotalSeconds);
-            verticalLine.Color = new ScottPlot.Color(255, 0, 0);
-            verticalLine.LineWidth = 1;
-            if (!addedBlankLegend)
-            {
-                addedBlankLegend = true;
-                plot.Legend.IsVisible = true;
-            }
+            var blackFrameDots = plot.Add.Scatter(
+                blackFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
+                blackFrameData.Select(d => 0.0).ToArray());
+            blackFrameDots.Color = new ScottPlot.Color(0, 0, 0);
+            blackFrameDots.LineWidth = 0;
+            blackFrameDots.MarkerSize = 5;
+            plot.Legend.IsVisible = true;
+        }
+
+        // Add white frames as black dots at y=1
+        if (whiteFrameData.Any())
+        {
+            var whiteFrameDots = plot.Add.Scatter(
+                whiteFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
+                whiteFrameData.Select(d => 1.0).ToArray());
+            whiteFrameDots.Color = new ScottPlot.Color(0, 0, 0);
+            whiteFrameDots.LineWidth = 0;
+            whiteFrameDots.MarkerSize = 5;
+            plot.Legend.IsVisible = true;
         }
 
         // Configure axes
-        plot.Axes.Title.Label.Text = "Scene Changes and Blank Scenes";
+        plot.Axes.Title.Label.Text = "Scene Changes and Blank/White Frames";
         plot.Axes.Bottom.Label.Text = "Time";
         plot.Axes.Left.Label.Text = "Change Amount";
         
@@ -128,7 +142,8 @@ public class SceneChangeFrameProcessor : IFrameProcessor
                 .ToArray()
         );
 
-        // Format Y axis
+        // Format Y axis with fixed range 0-1
+        plot.Axes.Left.Range.Set(0, 1);
         plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
             positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
             labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()

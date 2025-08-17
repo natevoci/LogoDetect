@@ -164,4 +164,19 @@ public class ImageProcessor
         // Frame is considered black if average luminance is very low and most pixels are dark
         return meanLuminance < darkPixelThreshold && darkPixelPercentage > 0.95;
     }
+
+    public bool IsWhiteFrame(YData data, double threshold)
+    {
+        // Calculate average luminance - closer to 255 means brighter
+        var meanLuminance = data.MatrixData.Enumerate().Average();
+
+        // Calculate percentage of pixels that are very bright (above (1-threshold) * 255)
+        var brightPixelThreshold = (1.0 - threshold) * 255.0;
+        var brightPixelCount = data.MatrixData.Enumerate().Count(x => x > brightPixelThreshold);
+        var totalPixels = data.Width * data.Height;
+        var brightPixelPercentage = brightPixelCount / (double)totalPixels;
+
+        // Frame is considered white if average luminance is very high and most pixels are bright
+        return meanLuminance > brightPixelThreshold && brightPixelPercentage > 0.95;
+    }
 }
