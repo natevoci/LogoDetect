@@ -150,7 +150,7 @@ public unsafe class MediaFile : IDisposable
                     _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den * AV_TIME_BASE);
 
                     av_packet_unref(_packet);
-                    var yData = new YData(yDataBytes, _frame->width, _frame->height);
+                    var yData = new YData(yDataBytes, _frame->width, _frame->height, _frame->linesize[0]);
                     return new Frame(yData, _currentTimestamp);
                 }
                 av_packet_unref(_packet);

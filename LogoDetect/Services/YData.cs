@@ -27,6 +27,18 @@ public class YData
         );
     }
 
+    public YData(byte[] rawData, int width, int height, int linesize)
+    {
+        _width = width;
+        _height = height;
+        // Convert byte array to float matrix
+        _matrixData = Matrix<float>.Build.Dense(
+            height,
+            width,
+            (i, j) => rawData[i * linesize + j]
+        );
+    }
+
     public YData(Matrix<float> matrix)
     {
         _width = matrix.ColumnCount;
