@@ -174,25 +174,69 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         var matrix = _logoReference.MatrixData;
         var baseValue = 127.0f;
-        var threshold = 0.2f * baseValue; // Threshold for deviation from base value
+        var originalThreshold = 0.2f * baseValue; // Original threshold for deviation from base value
+        var threshold = originalThreshold;
         
         int minX = _width, maxX = 0, minY = _height, maxY = 0;
         bool logoFound = false;
+        float maxDeviation = 0.0f;
+        int retryCount = 0;
+        const int maxRetries = 2;
 
-        // Find the bounding rectangle by scanning for pixels that deviate significantly from the base value
-        for (int y = 0; y < _height; y++)
+        while (!logoFound && retryCount <= maxRetries)
         {
-            for (int x = 0; x < _width; x++)
+            minX = _width;
+            maxX = 0;
+            minY = _height;
+            maxY = 0;
+            maxDeviation = 0.0f;
+
+            // Find the bounding rectangle by scanning for pixels that deviate significantly from the base value
+            for (int y = 0; y < _height; y++)
             {
-                var deviation = Math.Abs(matrix[y, x] - baseValue);
-                if (deviation > threshold)
+                for (int x = 0; x < _width; x++)
                 {
-                    logoFound = true;
-                    minX = Math.Min(minX, x);
-                    maxX = Math.Max(maxX, x);
-                    minY = Math.Min(minY, y);
-                    maxY = Math.Max(maxY, y);
+                    var deviation = Math.Abs(matrix[y, x] - baseValue);
+                    maxDeviation = Math.Max(maxDeviation, deviation);
+                    
+                    if (deviation > threshold)
+                    {
+                        logoFound = true;
+                        minX = Math.Min(minX, x);
+                        maxX = Math.Max(maxX, x);
+                        minY = Math.Min(minY, y);
+                        maxY = Math.Max(maxY, y);
+                    }
                 }
+            }
+
+            Console.WriteLine($"Logo bounding analysis (attempt {retryCount + 1}) - Max deviation: {maxDeviation:F2}, Threshold: {threshold:F2}, Logo found: {logoFound}");
+
+            if (logoFound && retryCount == 0)
+            {
+                // Check if bounding rectangle is too large and we can increase threshold
+                var boundingArea = (maxX - minX + 1) * (maxY - minY + 1);
+                var totalArea = _width * _height;
+                var areaPercentage = (double)boundingArea / totalArea;
+                
+                if (areaPercentage > 0.25 && maxDeviation > (threshold * 1.6f))
+                {
+                    Console.WriteLine($"Bounding rectangle covers {areaPercentage:P1} of image and max deviation is > 1.6x threshold. Increasing threshold and retrying...");
+                    threshold = threshold * 1.5f;
+                    logoFound = false; // Reset to retry
+                    continue;
+                }
+            }
+
+            if (!logoFound && retryCount < maxRetries)
+            {
+                threshold = threshold / 2.0f;
+                retryCount++;
+                Console.WriteLine($"No logo found, halving threshold to {threshold:F2} and retrying...");
+            }
+            else
+            {
+                break;
             }
         }
 
@@ -206,14 +250,13 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
                 Math.Min(_width - 1, maxX + padding) - Math.Max(0, minX - padding),
                 Math.Min(_height - 1, maxY + padding) - Math.Max(0, minY - padding)
             );
-
-            SaveLogoBoundingVisualization();
         }
         else
         {
             // If no logo found, use the entire frame
             _logoBoundingRect = new Rectangle(0, 0, _width, _height);
         }
+        SaveLogoBoundingVisualization();
     }
 
     private void SaveLogoBoundingVisualization()
