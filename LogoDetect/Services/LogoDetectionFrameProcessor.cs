@@ -24,6 +24,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private int _height;
     private int _width;
     private bool _initialized = false;
+    private TimeSpan _lastProcessedFrameTime = TimeSpan.Zero;
     private Action<string>? _debugFileTracker;
 
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
@@ -69,6 +70,12 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         if (!_initialized || _logoReference == null)
             return;
 
+        // Only process frames that are at least 1 second apart
+        if (current.TimeSpan < _lastProcessedFrameTime.Add(TimeSpan.FromSeconds(1)))
+            return;
+
+        _lastProcessedFrameTime = current.TimeSpan;
+
         var edgeMap = _imageProcessor.DetectEdges(current.YData);
         _rollingEdgeMaps.Enqueue(edgeMap.MatrixData);
         _rollingEdgeTimeSpans.Enqueue(current.TimeSpan);
@@ -90,6 +97,27 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     public void Complete(IProgressMsg? progress = null)
     {
+        // Save logo detections to CSV file
+        var logoDetectionsPath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".logodetections.csv");
+
+        // Create the directory if it doesn't exist
+        var directory = Path.GetDirectoryName(logoDetectionsPath);
+        if (directory != null && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        // Write logo detections to CSV file
+        using (var writer = new StreamWriter(logoDetectionsPath, false))
+        {
+            writer.WriteLine("TimeSpan,LogoDiff");
+            foreach (var detection in _logoDetections.OrderBy(x => x.Time))
+            {
+                writer.WriteLine($"{detection.Time:hh\\:mm\\:ss\\.fff},{detection.LogoDiff:F6}");
+            }
+        }
+        _debugFileTracker?.Invoke(logoDetectionsPath);
+
         SaveGraphOfLogoDetectionsWithMethod(_settings.logoThreshold, _mediaFile.GetDurationTimeSpan(), _logoDetections, "edge");
     }
 

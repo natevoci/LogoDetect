@@ -4,13 +4,13 @@ namespace LogoDetect.Models;
 
 public class ProgressMsg
 {
-    public double Progress;
+    public double? Progress;
     public string? Message;
 }
 
 public interface IProgressMsg : IProgress<ProgressMsg>
 {
-    void Report(double Progress, string? Message = null);
+    void Report(double? Progress, string? Message = null);
     void NewLine();
 };
 
@@ -21,7 +21,7 @@ public class Progress : System.Progress<ProgressMsg>, IProgressMsg
     public Progress() : base()
     { }
 
-    public void Report(double Progress, string? Message = null)
+    public void Report(double? Progress, string? Message = null)
     {
         ((IProgress<ProgressMsg>)this).Report(new ProgressMsg
         {
@@ -39,11 +39,14 @@ public class Progress : System.Progress<ProgressMsg>, IProgressMsg
     override protected void OnReport(ProgressMsg value)
     {
         var msg = new StringBuilder();
+
         if (!string.IsNullOrEmpty(value.Message))
             msg.Append($"{value.Message}");
         else
             msg.Append($"Progress");
-        msg.Append($": {value.Progress:F1}%");
+
+        if (value.Progress.HasValue)
+            msg.Append($": {value.Progress.Value:F1}%");
 
         var padding = msg.Length > _lastPosition ? 0 : _lastPosition;
         _lastPosition = msg.Length;

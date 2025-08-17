@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using LogoDetect.Models;
 
 namespace LogoDetect.Services;
@@ -29,38 +31,73 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     public void Initialize(IProgressMsg? progress = null)
     {
+        // var scenePath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".scenechanges.csv");
+        // if (File.Exists(scenePath))
+        // {
+        //     try
+        //     {
+        //         var lines = File.ReadAllLines(scenePath);
+        //         // Skip header line
+        //         foreach (var line in lines.Skip(1))
+        //         {
+        //             var parts = line.Split(',');
+        //             if (parts.Length >= 3)
+        //             {
+        //                 if (TimeSpan.TryParse(parts[0], out var timeSpan) &&
+        //                     double.TryParse(parts[1], out var changeAmount))
+        //                 {
+        //                     var type = parts[2].Trim();
+        //                     _sceneChanges.Add((timeSpan, changeAmount, type));
+        //                 }
+        //             }
+        //         }
+        //         progress?.Report(0, $"Loaded {_sceneChanges.Count} scene changes from existing CSV file.");
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         progress?.Report(0, $"Warning: Could not load existing CSV file: {ex.Message}");
+        //     }
+            
+        //     // Save visualization of scene changes
+        //     var graphFilePath = Path.ChangeExtension(scenePath, ".png");
+        //     SaveSceneChangeGraph(_sceneChanges.ToList(), graphFilePath);
+
+        // }
     }
 
     public void ProcessFrame(Frame current, Frame? previous)
     {
-        if (_imageProcessor.IsBlackFrame(current.YData, _settings.blankThreshold))
+        // Use the optimized combined function to check for black or white frames in one pass
+        var (isBlack, isWhite) = _imageProcessor.IsBlackOrWhiteFrame(current.YData, _settings.blankThreshold);
+        
+        if (isBlack)
         {
             _sceneChanges.Add((current.TimeSpan, 0.0, "black"));
         }
-        else if (_imageProcessor.IsWhiteFrame(current.YData, _settings.blankThreshold))
+        else if (isWhite)
         {
             _sceneChanges.Add((current.TimeSpan, 0.0, "white"));
         }
         else if (previous != null)
         {
             var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.YData, current.YData);
-            if (changeAmount > _settings.sceneThreshold)
-            {
-                _sceneChanges.Add((current.TimeSpan, changeAmount, "scene"));
-            }
+            _sceneChanges.Add((current.TimeSpan, changeAmount, "scene"));
+            // if (changeAmount > _settings.sceneThreshold)
+            // {
+            // }
         }
     }
 
     public void Complete(IProgressMsg? progress = null)
     {
-        string directory = _settings.outputPath ?? Path.GetDirectoryName(_mediaFile.FilePath)!;
+        var scenePath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".scenechanges.csv");
+
         // Create the directory if it doesn't exist
-        if (!Directory.Exists(directory))
+        var directory = Path.GetDirectoryName(scenePath);
+        if (directory != null && !Directory.Exists(directory))
         {
             Directory.CreateDirectory(directory);
         }
-
-        var scenePath = Path.Combine(directory, Path.GetFileNameWithoutExtension(_mediaFile.FilePath) + ".scenechanges.csv");
 
         // Write scene changes to CSV file
         using (var writer = new StreamWriter(scenePath, false))
@@ -95,10 +132,12 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         // Add scene changes as columns (green)
         if (sceneChangeData.Any())
         {
-            var sceneChangeColumns = plot.Add.Bars(
+            var sceneChangeColumns = plot.Add.Scatter(
                 sceneChangeData.Select(d => d.Time.TotalSeconds).ToArray(),
                 sceneChangeData.Select(d => d.ChangeAmount).ToArray());
-            sceneChangeColumns.Color = new ScottPlot.Color(0, 255, 0);
+            sceneChangeColumns.Color = new ScottPlot.Color(64, 64, 64);
+            sceneChangeColumns.LineWidth = 0;
+            sceneChangeColumns.MarkerSize = 4;
             plot.Legend.IsVisible = true;
         }
 
@@ -107,8 +146,8 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         {
             var blackFrameDots = plot.Add.Scatter(
                 blackFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
-                blackFrameData.Select(d => 0.0).ToArray());
-            blackFrameDots.Color = new ScottPlot.Color(0, 0, 0);
+                blackFrameData.Select(d => 0.01).ToArray());
+            blackFrameDots.Color = new ScottPlot.Color(255, 0, 0);
             blackFrameDots.LineWidth = 0;
             blackFrameDots.MarkerSize = 5;
             plot.Legend.IsVisible = true;
@@ -119,8 +158,8 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         {
             var whiteFrameDots = plot.Add.Scatter(
                 whiteFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
-                whiteFrameData.Select(d => 1.0).ToArray());
-            whiteFrameDots.Color = new ScottPlot.Color(0, 0, 0);
+                whiteFrameData.Select(d => 0.99).ToArray());
+            whiteFrameDots.Color = new ScottPlot.Color(0, 0, 255);
             whiteFrameDots.LineWidth = 0;
             whiteFrameDots.MarkerSize = 5;
             plot.Legend.IsVisible = true;
@@ -138,7 +177,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
                 .Select(m => m * 60.0)
                 .ToArray(),
             labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                .Select(m => TimeSpan.FromMinutes(m).ToString(@"mm\:ss"))
+                .Select(m => TimeSpan.FromMinutes(m).ToString(@"m"))
                 .ToArray()
         );
 

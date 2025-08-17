@@ -8,6 +8,13 @@ using System.Threading.Tasks;
 
 namespace LogoDetect.Services;
 
+public enum FrameProcessingMode
+{
+    AllFrames,
+    OneFramePerSecond,
+    KeyFrames
+}
+
 public class VideoProcessorSettings
 {
     public required string outputPath;
@@ -41,8 +48,8 @@ public class VideoProcessor : IDisposable
 
         await ProcessFrames(
             [
-                logoDetectionProcessor,
-                sceneChangeProcessor
+                // logoDetectionProcessor,
+                sceneChangeProcessor,
             ],
             new Progress()
         );
@@ -99,15 +106,25 @@ public class VideoProcessor : IDisposable
             processor.Initialize(progress);
         }
 
+        List<DateTime> framesProcessedTimes = new();
+
         Frame? previous = null;
-        await foreach (var frame in GetFramesToAnalyze(false))
+        await foreach (var frame in GetFramesToAnalyze(FrameProcessingMode.AllFrames))
         {
             Parallel.ForEach(processors, processor =>
             {
                 processor.ProcessFrame(frame, previous);
             });
             previous = frame;
-            progress?.Report((double)frame.Timestamp / duration * 100, "Processing video for logos, scene changes, and blank scenes");
+
+            framesProcessedTimes.Add(DateTime.UtcNow);
+            while (framesProcessedTimes.Count > 1000)
+            {
+                framesProcessedTimes.RemoveAt(0);
+            }
+
+            var fps = framesProcessedTimes.Count > 1 ? framesProcessedTimes.Count / (framesProcessedTimes[framesProcessedTimes.Count - 1] - framesProcessedTimes[0]).TotalSeconds : 0.0;
+            progress?.Report(null, $"Processing video for logos, scene changes, and blank scenes: {((double)frame.Timestamp / duration * 100):F1}%  (FPS: {fps:F1})");
         }
         if (previous != null)
             progress?.NewLine();
@@ -215,23 +232,50 @@ public class VideoProcessor : IDisposable
         _mediaFile?.Dispose();
     }
 
-    private async IAsyncEnumerable<Frame> GetFramesToAnalyze(bool onlyUseKeyFrames = false)
+    private async IAsyncEnumerable<Frame> GetFramesToAnalyze(FrameProcessingMode processingMode = FrameProcessingMode.OneFramePerSecond)
     {
         var duration = _mediaFile.GetDuration();
 
-        int nextSecond = 0;
-
-        var (frame, second) = await GetNextFrameToAnalyzeAsync(null, duration, onlyUseKeyFrames, nextSecond);
-        if (frame == null)
-            yield break; // No frames to analyze
-        nextSecond = second + 1;
-
-        while (frame != null && frame.Timestamp < duration)
+        switch (processingMode)
         {
-            var task = GetNextFrameToAnalyzeAsync(frame, duration, onlyUseKeyFrames, nextSecond);
-            yield return frame;
-            (frame, second) = await task;
-            nextSecond = second + 1;
+            case FrameProcessingMode.AllFrames:
+                // Process every frame
+                var frame = _mediaFile.GetFrameAtTimeSpan(TimeSpan.Zero);
+                while (frame != null && frame.Timestamp < duration)
+                {
+                    var frameTask = _mediaFile.ReadNextFrameAsync(false);
+                    yield return frame;
+                    frame = await frameTask;
+                }
+                break;
+
+            case FrameProcessingMode.OneFramePerSecond:
+                // Process one frame per second
+                int nextSecond = 0;
+                var (framePerSecond, second) = await GetNextFrameToAnalyzeAsync(null, duration, false, nextSecond);
+                if (framePerSecond == null)
+                    yield break;
+                nextSecond = second + 1;
+
+                while (framePerSecond != null && framePerSecond.Timestamp < duration)
+                {
+                    var task = GetNextFrameToAnalyzeAsync(framePerSecond, duration, false, nextSecond);
+                    yield return framePerSecond;
+                    (framePerSecond, second) = await task;
+                    nextSecond = second + 1;
+                }
+                break;
+
+            case FrameProcessingMode.KeyFrames:
+                // Process only key frames
+                var keyFrame = _mediaFile.GetFrameAtTimeSpan(TimeSpan.Zero);
+                while (keyFrame != null && keyFrame.Timestamp < duration)
+                {
+                    var frameTask = _mediaFile.ReadNextFrameAsync(true);
+                    yield return keyFrame;
+                    keyFrame = await frameTask;
+                }
+                break;
         }
     }
 
