@@ -54,6 +54,25 @@
 				"panel": "shared"
 			},
 			"dependsOn": ["build: publish"]
+		},
+		{
+			"label": "profile: LogoDetect",
+			"type": "process",
+			"command": "${workspaceFolder}/LogoDetect/bin/Debug/net8.0/LogoDetect.exe",
+			"args": [
+				"--input",
+				"TestSamples/1/video.mp4",
+				"--keepDebugFiles",
+				"--max-frames",
+				"2000"
+			],
+			"problemMatcher": [],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"dependsOn": ["dotnet: build"]
 		}
 	]
 }
