@@ -111,8 +111,9 @@ public class ImageProcessor : IImageProcessor
             return 0.0;
 
         // Calculate absolute difference using hardware acceleration
-        var diff = prevData.MatrixData.Subtract(currData.MatrixData).PointwiseAbs();
-        var diffSum = diff.Enumerate().Sum();
+        var diff = prevData.MatrixData.Subtract(currData.MatrixData);
+        var diffAbs = diff.PointwiseAbs();
+        var diffSum = diffAbs.ColumnSums().Sum();
         var totalPixels = prevData.Width * prevData.Height;
 
         return diffSum / (totalPixels * 255.0);

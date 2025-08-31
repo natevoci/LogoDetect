@@ -150,7 +150,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
                 plot.Legend.IsVisible = true;
             }
 
-            // Add black frames as black dots at y=0
+            // Add black frames as black dots
             if (blackFrameData.Any())
             {
                 var blackFrameDots = plot.Add.Scatter(
@@ -162,7 +162,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
                 plot.Legend.IsVisible = true;
             }
 
-            // Add white frames as black dots at y=1
+            // Add white frames as black dots
             if (whiteFrameData.Any())
             {
                 var whiteFrameDots = plot.Add.Scatter(
