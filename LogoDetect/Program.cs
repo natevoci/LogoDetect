@@ -78,6 +78,11 @@ public class Program
             description: "Keep debug files (PNG, CSV, etc.) generated during processing",
             getDefaultValue: () => false);
 
+        var maxFramesOption = new Option<int?>(
+            name: "--max-frames",
+            description: "Maximum number of frames to process (for debugging/testing)",
+            getDefaultValue: () => null);
+
         var rootCommand = new RootCommand("LogoDetect - Video logo detection and CSV cut list generation tool")
         {
             inputOption,
@@ -87,13 +92,24 @@ public class Program
             blackFrameThresholdOption,
             minDurationOption,
             outputOption,
-            keepDebugFilesOption
+            keepDebugFilesOption,
+            maxFramesOption
         };
 
-        rootCommand.SetHandler((input, logoThreshold, reload, sceneThreshold, blankThreshold, minDuration, output, keepDebugFiles) =>
+        rootCommand.SetHandler(async (context) =>
         {
             try
             {
+                var input = context.ParseResult.GetValueForOption(inputOption)!;
+                var logoThreshold = context.ParseResult.GetValueForOption(logoThresholdOption);
+                var reload = context.ParseResult.GetValueForOption(reloadOption);
+                var sceneThreshold = context.ParseResult.GetValueForOption(sceneChangeThresholdOption);
+                var blankThreshold = context.ParseResult.GetValueForOption(blackFrameThresholdOption);
+                var minDuration = context.ParseResult.GetValueForOption(minDurationOption);
+                var output = context.ParseResult.GetValueForOption(outputOption);
+                var keepDebugFiles = context.ParseResult.GetValueForOption(keepDebugFilesOption);
+                var maxFrames = context.ParseResult.GetValueForOption(maxFramesOption);
+
                 // Normalize the input path to handle mixed slashes
                 var normalizedInputPath = Path.GetFullPath(input.FullName);
                 if (!File.Exists(normalizedInputPath))
@@ -108,6 +124,11 @@ public class Program
                     : Path.ChangeExtension(normalizedInputPath, ".segments.csv");
                 Console.WriteLine($"Processing video: {normalizedInputPath}");
                 Console.WriteLine($"Output CSV file: {outputPath}");
+                
+                if (maxFrames.HasValue)
+                {
+                    Console.WriteLine($"Processing limited to {maxFrames.Value} frames for debugging/testing");
+                }
 
                 FFmpegBinariesHelper.RegisterFFmpegBinaries();
 
@@ -117,7 +138,7 @@ public class Program
                 stopwatch.Stop();
                 Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-                Task.Run(() => videoProcessor.ProcessVideo(new VideoProcessorSettings()
+                await videoProcessor.ProcessVideo(new VideoProcessorSettings()
                 {
                     outputPath = outputPath,
                     logoThreshold = logoThreshold,
@@ -126,8 +147,8 @@ public class Program
                     minDuration = TimeSpan.FromSeconds(minDuration),
                     forceReload = reload,
                     keepDebugFiles = keepDebugFiles,
-                }
-                )).Wait();
+                    maxFramesToProcess = maxFrames,
+                });
 
                 Console.WriteLine("Video processing complete.");
             }
@@ -136,7 +157,7 @@ public class Program
                 Console.Error.WriteLine($"Error: {ex.Message}");
                 Environment.Exit(1);
             }
-        }, inputOption, logoThresholdOption, reloadOption, sceneChangeThresholdOption, blackFrameThresholdOption, minDurationOption, outputOption, keepDebugFilesOption);
+        });
 
         return rootCommand.Invoke(args);
     }

@@ -14,7 +14,9 @@
                 "--input",
                 "${workspaceFolder}/TestSamples/4/video.mp4",
                 // "--reload",
-                "--keepDebugFiles"
+                "--keepDebugFiles",
+                "--max-frames",
+                "1000"
             ],
             "preLaunchTask": "dotnet: build",
         }

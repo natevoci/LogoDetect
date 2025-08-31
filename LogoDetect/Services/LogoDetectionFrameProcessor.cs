@@ -337,57 +337,78 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             File.Delete(graphFilePath);
         }
 
-        var plot = new Plot();
+        // Check if there are any logo detections to plot
+        if (logoDetections == null || logoDetections.Count == 0)
+        {
+            Console.WriteLine($"No logo detections to plot for method {method}. Skipping graph generation.");
+            return;
+        }
 
-        var times = logoDetections.Select(d => d.Time.TotalSeconds).ToArray();
-        var diffs = logoDetections.Select(d => (double)d.LogoDiff).ToArray();
+        try
+        {
+            var plot = new Plot();
 
-        var line = plot.Add.Scatter(times, diffs);
-        line.LineWidth = 2;
-        line.Color = Colors.Blue;
-        line.MarkerSize = 0;
-        line.LegendText = $"Logo Differences ({method})";
+            var times = logoDetections.Select(d => d.Time.TotalSeconds).ToArray();
+            var diffs = logoDetections.Select(d => (double)d.LogoDiff).ToArray();
 
-        // Add horizontal threshold line
-        var threshold = plot.Add.HorizontalLine(logoThreshold);
-        threshold.Color = Colors.Red;
-        threshold.LinePattern = ScottPlot.LinePattern.Dashed;
-        threshold.LineWidth = 2;
-        threshold.LegendText = "Logo Threshold";
+            // Ensure we have valid data
+            if (times.Length == 0 || diffs.Length == 0)
+            {
+                Console.WriteLine($"No valid data points for method {method}. Skipping graph generation.");
+                return;
+            }
 
-        // Configure axes
-        plot.Title($"Logo Detection Results - {method}");
-        plot.XLabel("Time (seconds)");
-        plot.YLabel("Logo Difference");
+            var line = plot.Add.Scatter(times, diffs);
+            line.LineWidth = 2;
+            line.Color = Colors.Blue;
+            line.MarkerSize = 0;
+            line.LegendText = $"Logo Differences ({method})";
 
-        // Format X axis as time
-        plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-            positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                .Select(m => m * 60.0)
-                .ToArray(),
-            labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                .Select(m => TimeSpan.FromMinutes(m).ToString(@"mm\:ss"))
-                .ToArray()
-        );
+            // Add horizontal threshold line
+            var threshold = plot.Add.HorizontalLine(logoThreshold);
+            threshold.Color = Colors.Red;
+            threshold.LinePattern = ScottPlot.LinePattern.Dashed;
+            threshold.LineWidth = 2;
+            threshold.LegendText = "Logo Threshold";
 
-        // Format Y axis
-        plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-            positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
-            labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()
-        );
+            // Configure axes
+            plot.Title($"Logo Detection Results - {method}");
+            plot.XLabel("Time (seconds)");
+            plot.YLabel("Logo Difference");
 
-        // Style the plot
-        plot.FigureBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-        plot.DataBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-        plot.Grid.MajorLineColor = new ScottPlot.Color(200, 200, 200); // Light gray
-        plot.Grid.MajorLineWidth = 1;
+            // Format X axis as time
+            plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
+                positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
+                    .Select(m => m * 60.0)
+                    .ToArray(),
+                labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
+                    .Select(m => TimeSpan.FromMinutes(m).ToString(@"mm\:ss"))
+                    .ToArray()
+            );
 
-        // Add legend for threshold line
-        plot.Legend.IsVisible = true;
-        threshold.LabelText = "Threshold";
+            // Format Y axis
+            plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
+                positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
+                labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()
+            );
 
-        // Save the plot
-        plot.SavePng(graphFilePath, 2000, 1000);
-        _debugFileTracker?.Invoke(graphFilePath);
+            // Style the plot
+            plot.FigureBackground.Color = new ScottPlot.Color(255, 255, 255); // White
+            plot.DataBackground.Color = new ScottPlot.Color(255, 255, 255); // White
+            plot.Grid.MajorLineColor = new ScottPlot.Color(200, 200, 200); // Light gray
+            plot.Grid.MajorLineWidth = 1;
+
+            // Add legend for threshold line
+            plot.Legend.IsVisible = true;
+            threshold.LabelText = "Threshold";
+
+            // Save the plot
+            plot.SavePng(graphFilePath, 2000, 1000);
+            _debugFileTracker?.Invoke(graphFilePath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error generating logo detection graph for method {method}: {ex.Message}");
+        }
     }
 }
