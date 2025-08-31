@@ -64,7 +64,7 @@
 				"TestSamples/1/video.mp4",
 				"--keepDebugFiles",
 				"--max-frames",
-				"2000"
+				"3000"
 			],
 			"problemMatcher": [],
 			"group": "test",
