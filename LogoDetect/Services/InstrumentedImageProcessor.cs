@@ -16,6 +16,12 @@ public class InstrumentedImageProcessor : IImageProcessor
         _performanceTracker = performanceTracker;
     }
 
+    public InstrumentedImageProcessor(PerformanceTracker performanceTracker)
+    {
+        _performanceTracker = performanceTracker;
+        _innerProcessor = new ImageProcessor(performanceTracker);
+    }
+
     public YData DetectEdges(YData input)
     {
         return _performanceTracker.MeasureMethod(

@@ -22,11 +22,40 @@ public class PerformanceSession
     public string SessionId { get; init; } = Guid.NewGuid().ToString("N")[..8];
 }
 
+public class ABTestResult<T>
+{
+    public required T Result { get; set; }
+    public string MethodUsed { get; set; } = string.Empty;
+    public double ExecutionTimeMs { get; set; }
+}
+
+public class ABTestStatistics
+{
+    public string TestName { get; set; } = string.Empty;
+    public string MethodA { get; set; } = string.Empty;
+    public string MethodB { get; set; } = string.Empty;
+    public int MethodACount { get; set; }
+    public int MethodBCount { get; set; }
+    public double MethodAAvgMs { get; set; }
+    public double MethodBAvgMs { get; set; }
+    public double MethodAMinMs { get; set; }
+    public double MethodAMaxMs { get; set; }
+    public double MethodBMinMs { get; set; }
+    public double MethodBMaxMs { get; set; }
+    public string Winner { get; set; } = string.Empty;
+    public double SpeedupFactor { get; set; }
+    public double PerformanceImprovementPercent { get; set; }
+}
+
 public class PerformanceTracker : IDisposable
 {
     private readonly ConcurrentBag<PerformanceMetric> _metrics = new();
     private readonly object _lockObject = new();
     private readonly PerformanceSession _session = new();
+    private readonly Random _random = new();
+    private readonly Dictionary<string, List<double>> _abTestMethodATimes = new();
+    private readonly Dictionary<string, List<double>> _abTestMethodBTimes = new();
+    private readonly Dictionary<string, (string MethodA, string MethodB)> _abTestConfigurations = new();
     private bool _disposed = false;
 
     public string SessionId => _session.SessionId;
@@ -123,6 +152,285 @@ public class PerformanceTracker : IDisposable
     internal void AddMetric(PerformanceMetric metric)
     {
         _metrics.Add(metric);
+    }
+
+    /// <summary>
+    /// Configures an A/B test with two competing methods
+    /// </summary>
+    public void ConfigureABTest(string testName, string methodAName, string methodBName)
+    {
+        lock (_lockObject)
+        {
+            _abTestConfigurations[testName] = (methodAName, methodBName);
+            if (!_abTestMethodATimes.ContainsKey(testName))
+                _abTestMethodATimes[testName] = new List<double>();
+            if (!_abTestMethodBTimes.ContainsKey(testName))
+                _abTestMethodBTimes[testName] = new List<double>();
+        }
+    }
+
+    /// <summary>
+    /// Performs an A/B test by randomly selecting between two methods
+    /// </summary>
+    public ABTestResult<T> PerformABTest<T>(string testName, Func<T> methodA, Func<T> methodB, string? additionalInfo = null)
+    {
+        if (!_abTestConfigurations.ContainsKey(testName))
+        {
+            throw new InvalidOperationException($"A/B test '{testName}' not configured. Call ConfigureABTest first.");
+        }
+
+        var config = _abTestConfigurations[testName];
+        bool useMethodA = _random.NextDouble() < 0.5;
+        var stopwatch = Stopwatch.StartNew();
+        var startTime = DateTime.UtcNow;
+
+        T result;
+        string methodUsed;
+
+        if (useMethodA)
+        {
+            result = methodA();
+            methodUsed = config.MethodA;
+        }
+        else
+        {
+            result = methodB();
+            methodUsed = config.MethodB;
+        }
+
+        stopwatch.Stop();
+        var endTime = DateTime.UtcNow;
+        var executionTimeMs = stopwatch.Elapsed.TotalMilliseconds;
+
+        // Record the performance metric
+        var metric = new PerformanceMetric
+        {
+            MethodName = $"{testName}.{methodUsed}",
+            ElapsedTicks = stopwatch.ElapsedTicks,
+            StartTime = startTime,
+            EndTime = endTime,
+            AdditionalInfo = additionalInfo
+        };
+        _metrics.Add(metric);
+
+        // Record A/B test timing
+        lock (_lockObject)
+        {
+            if (useMethodA)
+            {
+                _abTestMethodATimes[testName].Add(executionTimeMs);
+            }
+            else
+            {
+                _abTestMethodBTimes[testName].Add(executionTimeMs);
+            }
+        }
+
+        return new ABTestResult<T>
+        {
+            Result = result,
+            MethodUsed = methodUsed,
+            ExecutionTimeMs = executionTimeMs
+        };
+    }
+
+    /// <summary>
+    /// Performs an async A/B test by randomly selecting between two methods
+    /// </summary>
+    public async Task<ABTestResult<T>> PerformABTestAsync<T>(string testName, Func<Task<T>> methodA, Func<Task<T>> methodB, string? additionalInfo = null)
+    {
+        if (!_abTestConfigurations.ContainsKey(testName))
+        {
+            throw new InvalidOperationException($"A/B test '{testName}' not configured. Call ConfigureABTest first.");
+        }
+
+        var config = _abTestConfigurations[testName];
+        bool useMethodA = _random.NextDouble() < 0.5;
+        var stopwatch = Stopwatch.StartNew();
+        var startTime = DateTime.UtcNow;
+
+        T result;
+        string methodUsed;
+
+        if (useMethodA)
+        {
+            result = await methodA();
+            methodUsed = config.MethodA;
+        }
+        else
+        {
+            result = await methodB();
+            methodUsed = config.MethodB;
+        }
+
+        stopwatch.Stop();
+        var endTime = DateTime.UtcNow;
+        var executionTimeMs = stopwatch.Elapsed.TotalMilliseconds;
+
+        // Record the performance metric
+        var metric = new PerformanceMetric
+        {
+            MethodName = $"{testName}.{methodUsed}",
+            ElapsedTicks = stopwatch.ElapsedTicks,
+            StartTime = startTime,
+            EndTime = endTime,
+            AdditionalInfo = additionalInfo
+        };
+        _metrics.Add(metric);
+
+        // Record A/B test timing
+        lock (_lockObject)
+        {
+            if (useMethodA)
+            {
+                _abTestMethodATimes[testName].Add(executionTimeMs);
+            }
+            else
+            {
+                _abTestMethodBTimes[testName].Add(executionTimeMs);
+            }
+        }
+
+        return new ABTestResult<T>
+        {
+            Result = result,
+            MethodUsed = methodUsed,
+            ExecutionTimeMs = executionTimeMs
+        };
+    }
+
+    /// <summary>
+    /// Gets A/B test statistics for a specific test
+    /// </summary>
+    public ABTestStatistics? GetABTestStatistics(string testName)
+    {
+        lock (_lockObject)
+        {
+            if (!_abTestConfigurations.ContainsKey(testName) || 
+                !_abTestMethodATimes.ContainsKey(testName) || 
+                !_abTestMethodBTimes.ContainsKey(testName))
+            {
+                return null;
+            }
+
+            var config = _abTestConfigurations[testName];
+            var methodATimes = _abTestMethodATimes[testName];
+            var methodBTimes = _abTestMethodBTimes[testName];
+
+            if (methodATimes.Count == 0 && methodBTimes.Count == 0)
+            {
+                return null;
+            }
+
+            var stats = new ABTestStatistics
+            {
+                TestName = testName,
+                MethodA = config.MethodA,
+                MethodB = config.MethodB,
+                MethodACount = methodATimes.Count,
+                MethodBCount = methodBTimes.Count
+            };
+
+            if (methodATimes.Count > 0)
+            {
+                stats.MethodAAvgMs = methodATimes.Average();
+                stats.MethodAMinMs = methodATimes.Min();
+                stats.MethodAMaxMs = methodATimes.Max();
+            }
+
+            if (methodBTimes.Count > 0)
+            {
+                stats.MethodBAvgMs = methodBTimes.Average();
+                stats.MethodBMinMs = methodBTimes.Min();
+                stats.MethodBMaxMs = methodBTimes.Max();
+            }
+
+            if (methodATimes.Count > 0 && methodBTimes.Count > 0)
+            {
+                var methodAAvg = stats.MethodAAvgMs;
+                var methodBAvg = stats.MethodBAvgMs;
+                var improvement = ((methodAAvg - methodBAvg) / methodAAvg) * 100;
+
+                stats.Winner = methodBAvg < methodAAvg ? config.MethodB : config.MethodA;
+                stats.SpeedupFactor = methodBAvg < methodAAvg ? methodAAvg / methodBAvg : methodBAvg / methodAAvg;
+                stats.PerformanceImprovementPercent = Math.Abs(improvement);
+            }
+
+            return stats;
+        }
+    }
+
+    /// <summary>
+    /// Gets A/B test statistics for all configured tests
+    /// </summary>
+    public Dictionary<string, ABTestStatistics> GetAllABTestStatistics()
+    {
+        var results = new Dictionary<string, ABTestStatistics>();
+        
+        lock (_lockObject)
+        {
+            foreach (var testName in _abTestConfigurations.Keys)
+            {
+                var stats = GetABTestStatistics(testName);
+                if (stats != null)
+                {
+                    results[testName] = stats;
+                }
+            }
+        }
+        
+        return results;
+    }
+
+    /// <summary>
+    /// Prints A/B test results for a specific test
+    /// </summary>
+    public void PrintABTestResults(string testName)
+    {
+        var stats = GetABTestStatistics(testName);
+        if (stats == null)
+        {
+            Console.WriteLine($"No A/B testing data collected for test '{testName}'.");
+            return;
+        }
+
+        Console.WriteLine($"\n=== A/B TEST RESULTS: {stats.TestName.ToUpper()} ===");
+        
+        if (stats.MethodACount > 0)
+        {
+            Console.WriteLine($"{stats.MethodA} Method: {stats.MethodACount} calls, Avg: {stats.MethodAAvgMs:F2}ms, Min: {stats.MethodAMinMs:F2}ms, Max: {stats.MethodAMaxMs:F2}ms");
+        }
+        
+        if (stats.MethodBCount > 0)
+        {
+            Console.WriteLine($"{stats.MethodB} Method:  {stats.MethodBCount} calls, Avg: {stats.MethodBAvgMs:F2}ms, Min: {stats.MethodBMinMs:F2}ms, Max: {stats.MethodBMaxMs:F2}ms");
+        }
+        
+        if (stats.MethodACount > 0 && stats.MethodBCount > 0)
+        {
+            var slower = stats.Winner == stats.MethodA ? stats.MethodB : stats.MethodA;
+            Console.WriteLine($"Winner: {stats.Winner} method is {stats.SpeedupFactor:F2}x faster than {slower}");
+            Console.WriteLine($"Performance improvement: {stats.PerformanceImprovementPercent:F1}%");
+        }
+    }
+
+    /// <summary>
+    /// Prints A/B test results for all configured tests
+    /// </summary>
+    public void PrintAllABTestResults()
+    {
+        var allStats = GetAllABTestStatistics();
+        
+        if (!allStats.Any())
+        {
+            Console.WriteLine("No A/B testing data collected.");
+            return;
+        }
+        
+        foreach (var stats in allStats.Values)
+        {
+            PrintABTestResults(stats.TestName);
+        }
     }
 
     /// <summary>

@@ -67,7 +67,7 @@ public interface IImageProcessor
     bool IsWhiteFrame(YData data, double threshold);
 
     /// <summary>
-    /// Hardware-accelerated detection of black or white frames using SIMD operations
+    /// Detection of black or white frames
     /// </summary>
     /// <param name="data">Frame luminance data</param>
     /// <param name="threshold">Detection threshold</param>

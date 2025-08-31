@@ -37,7 +37,7 @@ public class VideoProcessor : IDisposable
 
     public VideoProcessor(string inputPath)
     {
-        _imageProcessor = new InstrumentedImageProcessor(new ImageProcessor(), _performanceTracker);
+        _imageProcessor = new InstrumentedImageProcessor(_performanceTracker);
         _mediaFile = new MediaFile(inputPath);
     }
 
@@ -104,14 +104,14 @@ public class VideoProcessor : IDisposable
             var performanceOutputPath = Path.ChangeExtension(settings.outputPath, ".performance.csv");
             _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
             Console.WriteLine($"Performance CSV exported successfully");
-            
+
             var performanceJsonPath = Path.ChangeExtension(settings.outputPath, ".performance.json");
             _performanceTracker.ExportToJson(performanceJsonPath);
             Console.WriteLine($"Performance JSON exported successfully");
-            
+
             Console.WriteLine($"Performance data written to: {performanceOutputPath}");
             Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
-            
+
             // Print performance statistics to console
             _performanceTracker.PrintStatistics();
         }
@@ -120,6 +120,10 @@ public class VideoProcessor : IDisposable
             Console.WriteLine($"Error exporting performance data: {ex.Message}");
             throw;
         }
+
+        // Print A/B testing results for all configured tests
+        _performanceTracker.PrintAllABTestResults();
+
 
         // Delete debug files if not keeping them
         if (!settings.keepDebugFiles)
