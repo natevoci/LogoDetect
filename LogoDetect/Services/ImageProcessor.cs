@@ -7,7 +7,7 @@ using MathNet.Numerics;
 
 namespace LogoDetect.Services;
 
-public class ImageProcessor
+public class ImageProcessor : IImageProcessor
 {
     private readonly float[] _sobelX = {
         -1, 0, 1,
