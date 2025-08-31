@@ -46,7 +46,7 @@ public class VideoProcessor : IDisposable
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         var logoDetectionProcessor = new LogoDetectionFrameProcessor(settings, _mediaFile, _imageProcessor);
-        var sceneChangeProcessor = new SceneChangeFrameProcessor(settings, _mediaFile, _imageProcessor);
+        var sceneChangeProcessor = new SceneChangeFrameProcessor(settings, _mediaFile, _imageProcessor, _performanceTracker);
 
         await _performanceTracker.MeasureMethodAsync(
             "ProcessFrames",

@@ -17,7 +17,9 @@ public unsafe class MediaFile : IDisposable
     private AVFormatContext* _formatContext;
     private AVCodecContext* _codecContext;
     private AVFrame* _frame;
+    private AVFrame* _quarterFrame;
     private AVPacket* _packet;
+    private SwsContext* _swsContext;
     private int _videoStream = -1;
     private long _currentTimestamp;
     private bool _disposed;
@@ -26,9 +28,10 @@ public unsafe class MediaFile : IDisposable
     public MediaFile(string inputPath)
     {
         FilePath = inputPath;
-        InitFFmpeg(inputPath);
         _frame = av_frame_alloc();
+        _quarterFrame = av_frame_alloc();
         _packet = av_packet_alloc();
+        InitFFmpeg(inputPath);
     }
 
     private unsafe void InitFFmpeg(string inputPath)
@@ -123,6 +126,38 @@ public unsafe class MediaFile : IDisposable
             av_strerror(openResult, buffer, (ulong)bufferSize);
             throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
         }
+
+        // Initialize scaling context for quarter-size frames
+        InitializeScalingContext();
+    }
+
+    private void InitializeScalingContext()
+    {
+        var quarterWidth = _codecContext->width / 4;
+        var quarterHeight = _codecContext->height / 4;
+
+        // Create scaling context
+        _swsContext = sws_getContext(
+            _codecContext->width, _codecContext->height, _codecContext->pix_fmt,
+            quarterWidth, quarterHeight, AVPixelFormat.AV_PIX_FMT_GRAY8,
+            SWS_BILINEAR, null, null, null);
+
+        if (_swsContext == null)
+        {
+            throw new Exception("Failed to create scaling context");
+        }
+
+        // Setup quarter frame
+        _quarterFrame->format = (int)AVPixelFormat.AV_PIX_FMT_GRAY8;
+        _quarterFrame->width = quarterWidth;
+        _quarterFrame->height = quarterHeight;
+
+        var bufferSize = av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_GRAY8, quarterWidth, quarterHeight, 1);
+        var buffer = (byte*)av_malloc((ulong)bufferSize);
+        
+        // Manually set the first plane data and linesize for grayscale
+        _quarterFrame->data[0] = buffer;
+        _quarterFrame->linesize[0] = quarterWidth;
     }
 
     public Frame? ReadNextFrame(bool onlyKeyFrames = false)
@@ -143,6 +178,14 @@ public unsafe class MediaFile : IDisposable
                     var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
                     Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
 
+                    // Scale frame to quarter size
+                    sws_scale(_swsContext, _frame->data, _frame->linesize, 0, _frame->height,
+                        _quarterFrame->data, _quarterFrame->linesize);
+
+                    // Extract quarter-size Y data
+                    var quarterYDataBytes = new byte[_quarterFrame->linesize[0] * _quarterFrame->height];
+                    Marshal.Copy((IntPtr)_quarterFrame->data[0], quarterYDataBytes, 0, quarterYDataBytes.Length);
+
                     _currentTimestamp = _frame->best_effort_timestamp;
 
                     // Convert timestamp from tbn to AV_TIME_BASE
@@ -151,7 +194,8 @@ public unsafe class MediaFile : IDisposable
 
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height, _frame->linesize[0]);
-                    return new Frame(yData, _currentTimestamp);
+                    var quarterYData = new YData(quarterYDataBytes, _quarterFrame->width, _quarterFrame->height, _quarterFrame->linesize[0]);
+                    return new Frame(yData, quarterYData, _currentTimestamp);
                 }
                 av_packet_unref(_packet);
             }
@@ -266,6 +310,22 @@ public unsafe class MediaFile : IDisposable
     {
         if (!_disposed)
         {
+            if (_swsContext != null)
+            {
+                sws_freeContext(_swsContext);
+            }
+
+            if (_quarterFrame != null)
+            {
+                // Free the allocated buffer for quarter frame
+                if (_quarterFrame->data[0] != null)
+                {
+                    av_free(_quarterFrame->data[0]);
+                }
+                var quarterFrame = _quarterFrame;
+                av_frame_free(&quarterFrame);
+            }
+
             if (_frame != null)
             {
                 var frame = _frame;

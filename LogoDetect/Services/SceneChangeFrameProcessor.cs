@@ -11,17 +11,19 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     private readonly VideoProcessorSettings _settings;
     private readonly MediaFile _mediaFile;
     private readonly IImageProcessor _imageProcessor;
+    private readonly PerformanceTracker _performanceTracker;
     private readonly List<(TimeSpan Time, double ChangeAmount, string Type)> _sceneChanges = new();
 
     private Action<string>? _debugFileTracker;
 
     public IReadOnlyList<(TimeSpan Time, double ChangeAmount, string Type)> SceneChanges => _sceneChanges;
 
-    public SceneChangeFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, IImageProcessor imageProcessor)
+    public SceneChangeFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, IImageProcessor imageProcessor, PerformanceTracker performanceTracker)
     {
         _settings = settings;
         _mediaFile = mediaFile;
         _imageProcessor = imageProcessor;
+        _performanceTracker = performanceTracker;
     }
 
     public void SetDebugFileTracker(Action<string> tracker)
@@ -80,7 +82,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         }
         else if (previous != null)
         {
-            var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.YData, current.YData);
+            var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.QuarterYData, current.QuarterYData);
             _sceneChanges.Add((current.TimeSpan, changeAmount, "scene"));
             // if (changeAmount > _settings.sceneThreshold)
             // {
