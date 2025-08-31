@@ -156,8 +156,9 @@ public unsafe class MediaFile : IDisposable
                 av_packet_unref(_packet);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"Error reading frame: {ex.Message}");
             return null;
         }
 
