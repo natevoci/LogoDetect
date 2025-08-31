@@ -49,7 +49,7 @@ public class InstrumentedImageProcessor : IImageProcessor
         );
     }
 
-    public (bool IsBlack, bool IsWhite) IsBlackOrWhiteFrame(YData data, double threshold)
+    public (bool IsBlack, bool IsWhite, float MeanLuminance) IsBlackOrWhiteFrame(YData data, double threshold)
     {
         return _performanceTracker.MeasureMethod(
             "ImageProcessor.IsBlackOrWhiteFrame",

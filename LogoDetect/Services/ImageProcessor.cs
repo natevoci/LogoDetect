@@ -195,7 +195,7 @@ public class ImageProcessor : IImageProcessor
         return meanLuminance > brightPixelThreshold && brightPixelPercentage > 0.95;
     }
 
-    public (bool IsBlack, bool IsWhite) IsBlackOrWhiteFrame(YData data, double threshold)
+    public (bool IsBlack, bool IsWhite, float MeanLuminance) IsBlackOrWhiteFrame(YData data, double threshold)
     {
         // GPU-accelerated implementation using MathNet.Numerics CUDA operations
         var matrix = data.MatrixData;
@@ -231,7 +231,7 @@ public class ImageProcessor : IImageProcessor
                 isWhite = brightPixelPercentage > 0.95;
             }
 
-            return (isBlack, isWhite);
+            return (isBlack, isWhite, meanLuminance);
         }
         catch (Exception ex)
         {
@@ -241,7 +241,7 @@ public class ImageProcessor : IImageProcessor
         }
     }
     
-    private (bool IsBlack, bool IsWhite) IsBlackOrWhiteFrameSIMD(YData data, double threshold)
+    private (bool IsBlack, bool IsWhite, float MeanLuminance) IsBlackOrWhiteFrameSIMD(YData data, double threshold)
     {
         var floatData = data.FloatData;
         var totalPixels = data.Width * data.Height;
@@ -359,7 +359,7 @@ public class ImageProcessor : IImageProcessor
             isWhite = brightPixelPercentage > 0.95;
         }
 
-        return (isBlack, isWhite);
+        return (isBlack, isWhite, meanLuminance);
     }
 
 }
