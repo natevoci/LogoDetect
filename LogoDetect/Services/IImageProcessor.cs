@@ -71,6 +71,6 @@ public interface IImageProcessor
     /// </summary>
     /// <param name="data">Frame luminance data</param>
     /// <param name="threshold">Detection threshold</param>
-    /// <returns>Tuple indicating if frame is black and/or white</returns>
-    (bool IsBlack, bool IsWhite) IsBlackOrWhiteFrame(YData data, double threshold);
+    /// <returns>Tuple indicating if frame is black and/or white, and the mean luminance value</returns>
+    (bool IsBlack, bool IsWhite, float MeanLuminance) IsBlackOrWhiteFrame(YData data, double threshold);
 }

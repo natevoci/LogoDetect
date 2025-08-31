@@ -67,16 +67,16 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     public void ProcessFrame(Frame current, Frame? previous)
     {
-        // Use the optimized combined function to check for black or white frames in one pass
-        var (isBlack, isWhite) = _imageProcessor.IsBlackOrWhiteFrame(current.YData, _settings.blankThreshold);
+        // Use the optimized combined function to check for black or white frames with mean luminance
+        var (isBlack, isWhite, meanLuminance) = _imageProcessor.IsBlackOrWhiteFrame(current.YData, _settings.blankThreshold);
         
         if (isBlack)
         {
-            _sceneChanges.Add((current.TimeSpan, 0.0, "black"));
+            _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "black"));
         }
         else if (isWhite)
         {
-            _sceneChanges.Add((current.TimeSpan, 0.0, "white"));
+            _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "white"));
         }
         else if (previous != null)
         {
@@ -155,7 +155,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
             {
                 var blackFrameDots = plot.Add.Scatter(
                     blackFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
-                    blackFrameData.Select(d => 0.01).ToArray());
+                    blackFrameData.Select(d => d.ChangeAmount).ToArray());
                 blackFrameDots.Color = new ScottPlot.Color(255, 0, 0);
                 blackFrameDots.LineWidth = 0;
                 blackFrameDots.MarkerSize = 5;
@@ -167,7 +167,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
             {
                 var whiteFrameDots = plot.Add.Scatter(
                     whiteFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
-                    whiteFrameData.Select(d => 0.99).ToArray());
+                    whiteFrameData.Select(d => d.ChangeAmount).ToArray());
                 whiteFrameDots.Color = new ScottPlot.Color(0, 0, 255);
                 whiteFrameDots.LineWidth = 0;
                 whiteFrameDots.MarkerSize = 5;
