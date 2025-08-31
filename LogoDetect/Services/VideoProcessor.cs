@@ -25,6 +25,7 @@ public class VideoProcessorSettings
     public string? sceneChangesPath = null;
     public bool forceReload;
     public bool keepDebugFiles;
+    public int? maxFramesToProcess = null;
 }
 
 public class VideoProcessor : IDisposable
@@ -52,7 +53,7 @@ public class VideoProcessor : IDisposable
             async () => await ProcessFrames([
                 new InstrumentedFrameProcessor(logoDetectionProcessor, _performanceTracker),
                 new InstrumentedFrameProcessor(sceneChangeProcessor, _performanceTracker),
-            ], new Progress())
+            ], settings, new Progress())
         );
 
         stopwatch.Stop();
@@ -60,9 +61,19 @@ public class VideoProcessor : IDisposable
 
         // Generate segments based on logo detections
         Console.WriteLine("Generating segments...");
+        Console.WriteLine($"Logo detections count: {logoDetectionProcessor.Detections.Count}");
         stopwatch.Restart();
         var segments = new List<LogoDetect.Models.VideoSegment>();
-        segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, settings.logoThreshold, settings.minDuration));
+        try
+        {
+            segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, settings.logoThreshold, settings.minDuration));
+            Console.WriteLine($"Generated {segments.Count} segments");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error generating segments: {ex.Message}");
+            throw;
+        }
         // var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "edge.csv");
         // File.WriteAllLines(edgeCsvPath, segments.Select(s => s.ToString()));
         // _debugFiles.Add(edgeCsvPath);
@@ -71,7 +82,16 @@ public class VideoProcessor : IDisposable
 
         // Write segments to CSV file
         stopwatch.Restart();
-        File.WriteAllLines(settings.outputPath, segments.Select(s => s.ToString()));
+        try
+        {
+            File.WriteAllLines(settings.outputPath, segments.Select(s => s.ToString()));
+            Console.WriteLine($"CSV file written successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error writing CSV file: {ex.Message}");
+            throw;
+        }
         stopwatch.Stop();
         Console.WriteLine($"CSV file written in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
@@ -79,17 +99,27 @@ public class VideoProcessor : IDisposable
         Console.WriteLine($"CSV file written to: {settings.outputPath}");
 
         // Export performance data
-        var performanceOutputPath = Path.ChangeExtension(settings.outputPath, ".performance.csv");
-        _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
-        
-        var performanceJsonPath = Path.ChangeExtension(settings.outputPath, ".performance.json");
-        _performanceTracker.ExportToJson(performanceJsonPath);
-        
-        Console.WriteLine($"Performance data written to: {performanceOutputPath}");
-        Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
-        
-        // Print performance statistics to console
-        _performanceTracker.PrintStatistics();
+        try
+        {
+            var performanceOutputPath = Path.ChangeExtension(settings.outputPath, ".performance.csv");
+            _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
+            Console.WriteLine($"Performance CSV exported successfully");
+            
+            var performanceJsonPath = Path.ChangeExtension(settings.outputPath, ".performance.json");
+            _performanceTracker.ExportToJson(performanceJsonPath);
+            Console.WriteLine($"Performance JSON exported successfully");
+            
+            Console.WriteLine($"Performance data written to: {performanceOutputPath}");
+            Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
+            
+            // Print performance statistics to console
+            _performanceTracker.PrintStatistics();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error exporting performance data: {ex.Message}");
+            throw;
+        }
 
         // Delete debug files if not keeping them
         if (!settings.keepDebugFiles)
@@ -110,7 +140,7 @@ public class VideoProcessor : IDisposable
             _debugFiles.Add(path);
     }
 
-    private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, IProgressMsg? progress = null)
+    private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, VideoProcessorSettings settings, IProgressMsg? progress = null)
     {
         var duration = _mediaFile.GetDuration();
 
@@ -130,6 +160,13 @@ public class VideoProcessor : IDisposable
         await foreach (var frame in GetFramesToAnalyze(FrameProcessingMode.AllFrames))
         {
             frameCount++;
+            
+            // Check if we've reached the frame limit
+            if (settings.maxFramesToProcess.HasValue && frameCount > settings.maxFramesToProcess.Value)
+            {
+                Console.WriteLine($"Reached frame limit of {settings.maxFramesToProcess.Value} frames. Stopping processing.");
+                break;
+            }
             
             // Process all frame processors for this frame
             using (var frameTimer = _performanceTracker.StartTimer("ProcessFrames.FrameProcessing", $"Frame {frameCount}: {frame.TimeSpan:hh\\:mm\\:ss\\.fff}"))
@@ -153,7 +190,10 @@ public class VideoProcessor : IDisposable
             }
 
             var fps = framesProcessedTimes.Count > 1 ? framesProcessedTimes.Count / (framesProcessedTimes[framesProcessedTimes.Count - 1] - framesProcessedTimes[0]).TotalSeconds : 0.0;
-            progress?.Report(null, $"Processing video for logos, scene changes, and blank scenes: {((double)frame.Timestamp / duration * 100):F1}%  (FPS: {fps:F1})");
+            var progressText = settings.maxFramesToProcess.HasValue 
+                ? $"Processing video for logos, scene changes, and blank scenes: {frameCount}/{settings.maxFramesToProcess.Value} frames  (FPS: {fps:F1})"
+                : $"Processing video for logos, scene changes, and blank scenes: {((double)frame.Timestamp / duration * 100):F1}%  (FPS: {fps:F1})";
+            progress?.Report(null, progressText);
         }
         if (previous != null)
             progress?.NewLine();
