@@ -153,13 +153,18 @@ public class ImageProcessor
     public bool IsBlackFrame(YData data, double threshold)
     {
         // Calculate average luminance - closer to 0 means darker
-        var meanLuminance = data.MatrixData.Enumerate().Average();
+        // Use accelerated sum calculation instead of Enumerate().Average()
+        var matrixSum = data.MatrixData.ColumnSums().Sum();
+        var totalPixels = data.Width * data.Height;
+        var meanLuminance = matrixSum / totalPixels;
 
         // Calculate percentage of pixels that are very dark (below threshold * 255)
-        var darkPixelThreshold = threshold * 255.0;
-        var darkPixelCount = data.MatrixData.Enumerate().Count(x => x < darkPixelThreshold);
-        var totalPixels = data.Width * data.Height;
-        var darkPixelPercentage = darkPixelCount / (double)totalPixels;
+        var darkPixelThreshold = (float)(threshold * 255.0);
+        
+        // Use accelerated pointwise comparison instead of Enumerate().Count()
+        var darkPixelMatrix = data.MatrixData.Map(x => x < darkPixelThreshold ? 1.0f : 0.0f);
+        var darkPixelCount = darkPixelMatrix.ColumnSums().Sum();
+        var darkPixelPercentage = darkPixelCount / totalPixels;
 
         // Frame is considered black if average luminance is very low and most pixels are dark
         return meanLuminance < darkPixelThreshold && darkPixelPercentage > 0.95;
@@ -168,15 +173,97 @@ public class ImageProcessor
     public bool IsWhiteFrame(YData data, double threshold)
     {
         // Calculate average luminance - closer to 255 means brighter
-        var meanLuminance = data.MatrixData.Enumerate().Average();
+        // Use accelerated sum calculation instead of Enumerate().Average()
+        var matrixSum = data.MatrixData.ColumnSums().Sum();
+        var totalPixels = data.Width * data.Height;
+        var meanLuminance = matrixSum / totalPixels;
 
         // Calculate percentage of pixels that are very bright (above (1-threshold) * 255)
-        var brightPixelThreshold = (1.0 - threshold) * 255.0;
-        var brightPixelCount = data.MatrixData.Enumerate().Count(x => x > brightPixelThreshold);
-        var totalPixels = data.Width * data.Height;
-        var brightPixelPercentage = brightPixelCount / (double)totalPixels;
+        var brightPixelThreshold = (float)((1.0 - threshold) * 255.0);
+        
+        // Use accelerated pointwise comparison instead of Enumerate().Count()
+        var brightPixelMatrix = data.MatrixData.Map(x => x > brightPixelThreshold ? 1.0f : 0.0f);
+        var brightPixelCount = brightPixelMatrix.ColumnSums().Sum();
+        var brightPixelPercentage = brightPixelCount / totalPixels;
 
         // Frame is considered white if average luminance is very high and most pixels are bright
         return meanLuminance > brightPixelThreshold && brightPixelPercentage > 0.95;
+    }
+
+    public (bool IsBlack, bool IsWhite) IsBlackOrWhiteFrame(YData data, double threshold)
+    {
+        var floatData = data.FloatData;
+        var totalPixels = data.Width * data.Height;
+        
+        var darkPixelThreshold = (float)(threshold * 255.0);
+        var brightPixelThreshold = (float)((1.0 - threshold) * 255.0);
+
+        // Hardware-accelerated calculations using SIMD
+        float meanLuminance = 0.0f;
+        int darkPixelCount = 0;
+        int brightPixelCount = 0;
+
+        unsafe
+        {
+            fixed (float* dataPtr = floatData)
+            {
+                // Calculate mean luminance using SIMD
+                for (int i = 0; i < totalPixels; i++)
+                {
+                    meanLuminance += dataPtr[i];
+                }
+                meanLuminance /= totalPixels;
+
+                // Create threshold masks and count pixels using pure SIMD operations
+                var darkThresholdVector = new System.Numerics.Vector<float>(darkPixelThreshold);
+                var brightThresholdVector = new System.Numerics.Vector<float>(brightPixelThreshold);
+                var oneVector = System.Numerics.Vector<float>.One;
+                
+                int vectorSize = System.Numerics.Vector<float>.Count;
+                int vectorizedLength = (totalPixels / vectorSize) * vectorSize;
+                
+                var darkCountVector = System.Numerics.Vector<float>.Zero;
+                var brightCountVector = System.Numerics.Vector<float>.Zero;
+                
+                // Process vectors using pure SIMD operations
+                for (int i = 0; i < vectorizedLength; i += vectorSize)
+                {
+                    var dataVector = new System.Numerics.Vector<float>(new ReadOnlySpan<float>(dataPtr + i, vectorSize));
+                    
+                    // Create masks for dark and bright pixels
+                    var darkMask = System.Numerics.Vector.LessThan(dataVector, darkThresholdVector);
+                    var brightMask = System.Numerics.Vector.GreaterThan(dataVector, brightThresholdVector);
+                    
+                    // Convert masks to float counts using conditional select (branchless)
+                    darkCountVector += System.Numerics.Vector.ConditionalSelect(darkMask, oneVector, System.Numerics.Vector<float>.Zero);
+                    brightCountVector += System.Numerics.Vector.ConditionalSelect(brightMask, oneVector, System.Numerics.Vector<float>.Zero);
+                }
+                
+                // Sum the vector elements to get final counts
+                for (int i = 0; i < vectorSize; i++)
+                {
+                    darkPixelCount += (int)darkCountVector[i];
+                    brightPixelCount += (int)brightCountVector[i];
+                }
+                
+                // Handle remaining elements
+                for (int i = vectorizedLength; i < totalPixels; i++)
+                {
+                    if (dataPtr[i] < darkPixelThreshold) darkPixelCount++;
+                    if (dataPtr[i] > brightPixelThreshold) brightPixelCount++;
+                }
+            }
+        }
+
+        var darkPixelPercentage = (float)darkPixelCount / totalPixels;
+        var brightPixelPercentage = (float)brightPixelCount / totalPixels;
+
+        // Frame is considered black if average luminance is very low and most pixels are dark
+        var isBlack = meanLuminance < darkPixelThreshold && darkPixelPercentage > 0.95;
+        
+        // Frame is considered white if average luminance is very high and most pixels are bright
+        var isWhite = meanLuminance > brightPixelThreshold && brightPixelPercentage > 0.95;
+
+        return (isBlack, isWhite);
     }
 }
