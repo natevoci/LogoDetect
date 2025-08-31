@@ -13,7 +13,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     private readonly VideoProcessorSettings _settings;
     private readonly MediaFile _mediaFile;
-    private readonly ImageProcessor _imageProcessor;
+    private readonly IImageProcessor _imageProcessor;
 
     private YData? _logoReference;
     private Rectangle _logoBoundingRect;
@@ -29,7 +29,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
 
-    public LogoDetectionFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, ImageProcessor imageProcessor)
+    public LogoDetectionFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, IImageProcessor imageProcessor)
     {
         _settings = settings;
         _mediaFile = mediaFile;

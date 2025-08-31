@@ -10,14 +10,14 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 {
     private readonly VideoProcessorSettings _settings;
     private readonly MediaFile _mediaFile;
-    private readonly ImageProcessor _imageProcessor;
+    private readonly IImageProcessor _imageProcessor;
     private readonly List<(TimeSpan Time, double ChangeAmount, string Type)> _sceneChanges = new();
 
     private Action<string>? _debugFileTracker;
 
     public IReadOnlyList<(TimeSpan Time, double ChangeAmount, string Type)> SceneChanges => _sceneChanges;
 
-    public SceneChangeFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, ImageProcessor imageProcessor)
+    public SceneChangeFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, IImageProcessor imageProcessor)
     {
         _settings = settings;
         _mediaFile = mediaFile;

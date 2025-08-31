@@ -29,13 +29,14 @@ public class VideoProcessorSettings
 
 public class VideoProcessor : IDisposable
 {
-    private readonly ImageProcessor _imageProcessor;
+    private readonly IImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
     private readonly List<string> _debugFiles = new();
+    private readonly PerformanceTracker _performanceTracker = new();
 
     public VideoProcessor(string inputPath)
     {
-        _imageProcessor = new ImageProcessor();
+        _imageProcessor = new InstrumentedImageProcessor(new ImageProcessor(), _performanceTracker);
         _mediaFile = new MediaFile(inputPath);
     }
 
@@ -46,12 +47,12 @@ public class VideoProcessor : IDisposable
         var logoDetectionProcessor = new LogoDetectionFrameProcessor(settings, _mediaFile, _imageProcessor);
         var sceneChangeProcessor = new SceneChangeFrameProcessor(settings, _mediaFile, _imageProcessor);
 
-        await ProcessFrames(
-            [
-                // logoDetectionProcessor,
-                sceneChangeProcessor,
-            ],
-            new Progress()
+        await _performanceTracker.MeasureMethodAsync(
+            "ProcessFrames",
+            async () => await ProcessFrames([
+                new InstrumentedFrameProcessor(logoDetectionProcessor, _performanceTracker),
+                new InstrumentedFrameProcessor(sceneChangeProcessor, _performanceTracker),
+            ], new Progress())
         );
 
         stopwatch.Stop();
@@ -77,6 +78,19 @@ public class VideoProcessor : IDisposable
         Console.WriteLine("Processing complete!");
         Console.WriteLine($"CSV file written to: {settings.outputPath}");
 
+        // Export performance data
+        var performanceOutputPath = Path.ChangeExtension(settings.outputPath, ".performance.csv");
+        _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
+        
+        var performanceJsonPath = Path.ChangeExtension(settings.outputPath, ".performance.json");
+        _performanceTracker.ExportToJson(performanceJsonPath);
+        
+        Console.WriteLine($"Performance data written to: {performanceOutputPath}");
+        Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
+        
+        // Print performance statistics to console
+        _performanceTracker.PrintStatistics();
+
         // Delete debug files if not keeping them
         if (!settings.keepDebugFiles)
         {
@@ -100,21 +114,36 @@ public class VideoProcessor : IDisposable
     {
         var duration = _mediaFile.GetDuration();
 
-        foreach (var processor in processors)
+        using (var initialiseTimer = _performanceTracker.StartTimer("ProcessFrames.Initialize"))
         {
-            processor.SetDebugFileTracker(AddDebugFile);
-            processor.Initialize(progress);
+            foreach (var processor in processors)
+            {
+                processor.SetDebugFileTracker(AddDebugFile);
+                processor.Initialize(progress);
+            }
         }
 
         List<DateTime> framesProcessedTimes = new();
+        var frameCount = 0;
 
         Frame? previous = null;
         await foreach (var frame in GetFramesToAnalyze(FrameProcessingMode.AllFrames))
         {
-            Parallel.ForEach(processors, processor =>
+            frameCount++;
+            
+            // Process all frame processors for this frame
+            using (var frameTimer = _performanceTracker.StartTimer("ProcessFrames.FrameProcessing", $"Frame {frameCount}: {frame.TimeSpan:hh\\:mm\\:ss\\.fff}"))
             {
-                processor.ProcessFrame(frame, previous);
-            });
+                // Parallel.ForEach(processors, processor =>
+                // {
+                //     processor.ProcessFrame(frame, previous);
+                // });
+                foreach (var processor in processors)
+                {
+                    processor.ProcessFrame(frame, previous);
+                }
+            }
+            
             previous = frame;
 
             framesProcessedTimes.Add(DateTime.UtcNow);
@@ -129,10 +158,15 @@ public class VideoProcessor : IDisposable
         if (previous != null)
             progress?.NewLine();
 
-        foreach (var processor in processors)
+        using (var completeTimer = _performanceTracker.StartTimer("ProcessFrames.Complete"))
         {
-            processor.Complete(progress);
+            foreach (var processor in processors)
+            {
+                processor.Complete(progress);
+            }
         }
+        
+        Console.WriteLine($"Total frames processed: {frameCount}");
     }
 
     private List<VideoSegment> GenerateSegments(
@@ -229,6 +263,7 @@ public class VideoProcessor : IDisposable
 
     public void Dispose()
     {
+        _performanceTracker?.Dispose();
         _mediaFile?.Dispose();
     }
 
