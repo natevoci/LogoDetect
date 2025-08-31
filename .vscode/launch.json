@@ -13,8 +13,8 @@
             "args": [
                 "--input",
                 "${workspaceFolder}/TestSamples/4/video.mp4",
-                "--keepDebugFiles",
-                "--reload"
+                // "--reload",
+                "--keepDebugFiles"
             ],
             "preLaunchTask": "dotnet: build",
         }
