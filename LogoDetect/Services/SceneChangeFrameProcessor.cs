@@ -33,7 +33,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     public void Initialize(IProgressMsg? progress = null)
     {
-        // var scenePath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".scenechanges.csv");
+        // var scenePath = _settings.GetOutputFileWithExtension(".scenechanges.csv");
         // if (File.Exists(scenePath))
         // {
         //     try
@@ -92,7 +92,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     public void Complete(IProgressMsg? progress = null)
     {
-        var scenePath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".scenechanges.csv");
+        var scenePath = _settings.GetOutputFileWithExtension(".scenechanges.csv");
 
         // Create the directory if it doesn't exist
         var directory = Path.GetDirectoryName(scenePath);

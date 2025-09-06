@@ -98,7 +98,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     public void Complete(IProgressMsg? progress = null)
     {
         // Save logo detections to CSV file
-        var logoDetectionsPath = Path.ChangeExtension(_settings.outputPath ?? _mediaFile.FilePath, ".logodetections.csv");
+        var logoDetectionsPath = _settings.GetOutputFileWithExtension(".logodetections.csv");
 
         // Create the directory if it doesn't exist
         var directory = Path.GetDirectoryName(logoDetectionsPath);
@@ -123,8 +123,8 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     private void GenerateLogoReference(IProgressMsg? progress = null)
     {
-        var logoPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.png");
-        var csvFilePath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.csv");
+        var logoPath = _settings.GetOutputFileWithExtension(".logo.png");
+        var csvFilePath = _settings.GetOutputFileWithExtension(".logo.csv");
         if (File.Exists(csvFilePath) && !_settings.forceReload)
         {
             _logoReference = YData.LoadFromCSV(csvFilePath);

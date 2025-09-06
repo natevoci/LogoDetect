@@ -17,7 +17,9 @@ public enum FrameProcessingMode
 
 public class VideoProcessorSettings
 {
+    public required string inputPath;
     public required string outputPath;
+    public required string? outputFilename;
     public double logoThreshold;
     public double sceneThreshold;
     public double blankThreshold;
@@ -26,34 +28,42 @@ public class VideoProcessorSettings
     public bool forceReload;
     public bool keepDebugFiles;
     public int? maxFramesToProcess = null;
+
+    public string GetOutputFileWithExtension(string extension)
+    {
+        var fullOutputPath = Path.Combine(outputPath, outputFilename ?? Path.ChangeExtension(inputPath, ".csv"));
+        return Path.ChangeExtension(fullOutputPath, extension);
+    }
 }
 
 public class VideoProcessor : IDisposable
 {
+    private readonly VideoProcessorSettings _settings;
     private readonly IImageProcessor _imageProcessor;
     private readonly MediaFile _mediaFile;
     private readonly List<string> _debugFiles = new();
     private readonly PerformanceTracker _performanceTracker = new();
 
-    public VideoProcessor(string inputPath)
+    public VideoProcessor(VideoProcessorSettings settings)
     {
+        _settings = settings;
         _imageProcessor = new InstrumentedImageProcessor(_performanceTracker);
-        _mediaFile = new MediaFile(inputPath);
+        _mediaFile = new MediaFile(settings.inputPath);
     }
 
-    public async Task ProcessVideo(VideoProcessorSettings settings)
+    public async Task ProcessVideo()
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        var logoDetectionProcessor = new LogoDetectionFrameProcessor(settings, _mediaFile, _imageProcessor);
-        var sceneChangeProcessor = new SceneChangeFrameProcessor(settings, _mediaFile, _imageProcessor, _performanceTracker);
+        var logoDetectionProcessor = new LogoDetectionFrameProcessor(_settings, _mediaFile, _imageProcessor);
+        var sceneChangeProcessor = new SceneChangeFrameProcessor(_settings, _mediaFile, _imageProcessor, _performanceTracker);
 
         await _performanceTracker.MeasureMethodAsync(
             "ProcessFrames",
             async () => await ProcessFrames([
                 new InstrumentedFrameProcessor(logoDetectionProcessor, _performanceTracker),
                 new InstrumentedFrameProcessor(sceneChangeProcessor, _performanceTracker),
-            ], settings, new Progress())
+            ], new Progress())
         );
 
         stopwatch.Stop();
@@ -66,7 +76,7 @@ public class VideoProcessor : IDisposable
         var segments = new List<LogoDetect.Models.VideoSegment>();
         try
         {
-            segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, settings.logoThreshold, settings.minDuration));
+            segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, _settings.logoThreshold, _settings.minDuration));
             Console.WriteLine($"Generated {segments.Count} segments");
         }
         catch (Exception ex)
@@ -78,7 +88,7 @@ public class VideoProcessor : IDisposable
 #endif
             throw;
         }
-        // var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "edge.csv");
+        // var edgeCsvPath = Path.ChangeExtension(_settings.outputPath, "edge.csv");
         // File.WriteAllLines(edgeCsvPath, segments.Select(s => s.ToString()));
         // _debugFiles.Add(edgeCsvPath);
         stopwatch.Stop();
@@ -86,9 +96,10 @@ public class VideoProcessor : IDisposable
 
         // Write segments to CSV file
         stopwatch.Restart();
+        var fullOutputPath = _settings.GetOutputFileWithExtension(".csv");
         try
         {
-            File.WriteAllLines(settings.outputPath, segments.Select(s => s.ToString()));
+            File.WriteAllLines(fullOutputPath, segments.Select(s => s.ToString()));
             Console.WriteLine($"CSV file written successfully");
         }
         catch (Exception ex)
@@ -104,16 +115,16 @@ public class VideoProcessor : IDisposable
         Console.WriteLine($"CSV file written in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
         Console.WriteLine("Processing complete!");
-        Console.WriteLine($"CSV file written to: {settings.outputPath}");
+        Console.WriteLine($"CSV file written to: {fullOutputPath}");
 
         // Export performance data
         try
         {
-            var performanceOutputPath = Path.ChangeExtension(settings.outputPath, ".performance.csv");
+            var performanceOutputPath = Path.ChangeExtension(fullOutputPath, ".performance.csv");
             _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
             Console.WriteLine($"Performance CSV exported successfully");
 
-            var performanceJsonPath = Path.ChangeExtension(settings.outputPath, ".performance.json");
+            var performanceJsonPath = Path.ChangeExtension(fullOutputPath, ".performance.json");
             _performanceTracker.ExportToJson(performanceJsonPath);
             Console.WriteLine($"Performance JSON exported successfully");
 
@@ -138,11 +149,11 @@ public class VideoProcessor : IDisposable
 
 
         // Delete debug files if not keeping them
-        if (!settings.keepDebugFiles)
+        if (!_settings.keepDebugFiles)
         {
             foreach (var file in _debugFiles)
             {
-                if (!string.Equals(file, settings.outputPath, StringComparison.OrdinalIgnoreCase) && File.Exists(file))
+                if (!string.Equals(file, fullOutputPath, StringComparison.OrdinalIgnoreCase) && File.Exists(file))
                 {
                     try { File.Delete(file); } catch { }
                 }
@@ -156,7 +167,7 @@ public class VideoProcessor : IDisposable
             _debugFiles.Add(path);
     }
 
-    private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, VideoProcessorSettings settings, IProgressMsg? progress = null)
+    private async Task ProcessFrames(IEnumerable<IFrameProcessor> processors, IProgressMsg? progress = null)
     {
         var duration = _mediaFile.GetDuration();
 
@@ -178,9 +189,9 @@ public class VideoProcessor : IDisposable
             frameCount++;
             
             // Check if we've reached the frame limit
-            if (settings.maxFramesToProcess.HasValue && frameCount > settings.maxFramesToProcess.Value)
+            if (_settings.maxFramesToProcess.HasValue && frameCount > _settings.maxFramesToProcess.Value)
             {
-                Console.WriteLine($"Reached frame limit of {settings.maxFramesToProcess.Value} frames. Stopping processing.");
+                Console.WriteLine($"Reached frame limit of {_settings.maxFramesToProcess.Value} frames. Stopping processing.");
                 break;
             }
             
@@ -206,8 +217,8 @@ public class VideoProcessor : IDisposable
             }
 
             var fps = framesProcessedTimes.Count > 1 ? framesProcessedTimes.Count / (framesProcessedTimes[framesProcessedTimes.Count - 1] - framesProcessedTimes[0]).TotalSeconds : 0.0;
-            var progressText = settings.maxFramesToProcess.HasValue 
-                ? $"Processing video for logos, scene changes, and blank scenes: {frameCount}/{settings.maxFramesToProcess.Value} frames  (FPS: {fps:F1})"
+            var progressText = _settings.maxFramesToProcess.HasValue
+                ? $"Processing video for logos, scene changes, and blank scenes: {frameCount}/{_settings.maxFramesToProcess.Value} frames  (FPS: {fps:F1})"
                 : $"Processing video for logos, scene changes, and blank scenes: {((double)frame.Timestamp / duration * 100):F1}%  (FPS: {fps:F1})";
             progress?.Report(null, progressText);
         }

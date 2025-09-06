@@ -122,12 +122,12 @@ public class Program
                 if (Path.GetExtension(normalizedInputPath).ToLowerInvariant() != ".mp4")
                     throw new ArgumentException("Input file must be an MP4 video", normalizedInputPath);
 
-                // Normalize the output path if provided, otherwise create one based on the input path
-                var outputPath = output != null
-                    ? Path.GetFullPath(output.FullName)
-                    : Path.ChangeExtension(normalizedInputPath, ".segments.csv");
+                // Normalize the output path if provided, otherwise use the input path
+                var outputPath = (output != null ? Path.GetDirectoryName(output.FullName) : Path.GetDirectoryName(normalizedInputPath)) ?? throw new InvalidOperationException("Could not determine output directory");
+                var outputFilename = output != null ? Path.GetFileName(output.FullName) : null;
+                
                 Console.WriteLine($"Processing video: {normalizedInputPath}");
-                Console.WriteLine($"Output CSV file: {outputPath}");
+                Console.WriteLine($"Output path: {outputPath}");
                 
                 if (maxFrames.HasValue)
                 {
@@ -138,13 +138,11 @@ public class Program
 
                 Console.WriteLine("Loading video file...");
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                using var videoProcessor = new VideoProcessor(normalizedInputPath);
-                stopwatch.Stop();
-                Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
-
-                await videoProcessor.ProcessVideo(new VideoProcessorSettings()
+                using var videoProcessor = new VideoProcessor(new VideoProcessorSettings()
                 {
+                    inputPath = normalizedInputPath,
                     outputPath = outputPath,
+                    outputFilename = outputFilename,
                     logoThreshold = logoThreshold,
                     sceneThreshold = sceneThreshold,
                     blankThreshold = blankThreshold,
@@ -153,6 +151,10 @@ public class Program
                     keepDebugFiles = keepDebugFiles,
                     maxFramesToProcess = maxFrames,
                 });
+                stopwatch.Stop();
+                Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+
+                await videoProcessor.ProcessVideo();
 
                 Console.WriteLine("Video processing complete.");
             }
