@@ -202,7 +202,11 @@ public unsafe class MediaFile : IDisposable
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error reading frame: {ex}");
+#else
             Console.WriteLine($"Error reading frame: {ex.Message}");
+#endif
             return null;
         }
 

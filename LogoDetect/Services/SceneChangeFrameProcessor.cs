@@ -180,7 +180,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
             plot.Axes.Title.Label.Text = "Scene Changes and Blank/White Frames";
             plot.Axes.Bottom.Label.Text = "Time";
             plot.Axes.Left.Label.Text = "Change Amount";
-            
+
             // Format X axis as time
             var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
             plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
@@ -188,7 +188,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
                     .Select(m => m * 60.0)
                     .ToArray(),
                 labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                    .Select(m => TimeSpan.FromMinutes(m).ToString(@"m"))
+                    .Select(m => $"{m}m")
                     .ToArray()
             );
 
@@ -211,7 +211,11 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error generating scene change graph: {ex}");
+#else
             Console.WriteLine($"Error generating scene change graph: {ex.Message}");
+#endif
         }
     }
 

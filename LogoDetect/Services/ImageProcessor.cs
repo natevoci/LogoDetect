@@ -237,7 +237,11 @@ public class ImageProcessor : IImageProcessor
         catch (Exception ex)
         {
             // Fallback to SIMD implementation if GPU operations fail
+#if DEBUG
+            Console.WriteLine($"GPU acceleration failed, falling back to SIMD: {ex}");
+#else
             Console.WriteLine($"GPU acceleration failed, falling back to SIMD: {ex.Message}");
+#endif
             return IsBlackOrWhiteFrameSIMD(data, threshold);
         }
     }

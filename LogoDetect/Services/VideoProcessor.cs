@@ -71,7 +71,11 @@ public class VideoProcessor : IDisposable
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error generating segments: {ex}");
+#else
             Console.WriteLine($"Error generating segments: {ex.Message}");
+#endif
             throw;
         }
         // var edgeCsvPath = Path.ChangeExtension(settings.outputPath, "edge.csv");
@@ -89,7 +93,11 @@ public class VideoProcessor : IDisposable
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error writing CSV file: {ex}");
+#else
             Console.WriteLine($"Error writing CSV file: {ex.Message}");
+#endif
             throw;
         }
         stopwatch.Stop();
@@ -117,7 +125,11 @@ public class VideoProcessor : IDisposable
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error exporting performance data: {ex}");
+#else
             Console.WriteLine($"Error exporting performance data: {ex.Message}");
+#endif
             throw;
         }
 

@@ -408,7 +408,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Error generating logo detection graph for method {method}: {ex}");
+#else
             Console.WriteLine($"Error generating logo detection graph for method {method}: {ex.Message}");
+#endif
         }
     }
 }

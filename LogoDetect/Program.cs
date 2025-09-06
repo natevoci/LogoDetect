@@ -35,7 +35,11 @@ public class Program
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Console.WriteLine($"Update check failed: {ex}");
+#else
             Console.WriteLine($"Update check failed: {ex.Message}");
+#endif
         }
 
         var inputOption = new Option<FileInfo>(
@@ -154,7 +158,11 @@ public class Program
             }
             catch (Exception ex)
             {
+#if DEBUG
+                Console.Error.WriteLine($"Error: {ex}");
+#else
                 Console.Error.WriteLine($"Error: {ex.Message}");
+#endif
                 Environment.Exit(1);
             }
         });
