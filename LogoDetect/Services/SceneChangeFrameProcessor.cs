@@ -84,22 +84,26 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     {
         // Use the optimized combined function to check for black or white frames with mean luminance
         var (isBlack, isWhite, meanLuminance) = _imageProcessor.IsBlackOrWhiteFrame(current.QuarterYData, _settings.blankThreshold);
+
+        // Always add mean luminance data separately
+        _sharedDataManager?.AddMeanLuminance(current.TimeSpan, meanLuminance);
+        
+        // Add black/white frame data
+        _sharedDataManager?.AddBlackWhiteFrame(current.TimeSpan, isBlack, isWhite);
         
         if (isBlack)
         {
             _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "black"));
-            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, meanLuminance / 255.0, "black");
         }
         else if (isWhite)
         {
             _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "white"));
-            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, meanLuminance / 255.0, "white");
         }
         else if (previous != null)
         {
             var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.QuarterYData, current.QuarterYData);
             _sceneChanges.Add((current.TimeSpan, changeAmount, "scene"));
-            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, changeAmount, "scene");
+            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, changeAmount);
             // if (changeAmount > _settings.sceneThreshold)
             // {
             // }

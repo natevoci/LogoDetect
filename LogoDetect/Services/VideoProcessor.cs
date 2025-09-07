@@ -29,9 +29,19 @@ public class VideoProcessorSettings
     public bool keepDebugFiles;
     public int? maxFramesToProcess = null;
 
-    public string GetOutputFileWithExtension(string extension)
+    public string GetOutputFileWithExtension(string extension, string? subfolder = null)
     {
-        var fullOutputPath = Path.Combine(outputPath, outputFilename ?? Path.ChangeExtension(inputPath, ".csv"));
+        var baseOutputPath = outputPath;
+        if (!string.IsNullOrEmpty(subfolder))
+        {
+            baseOutputPath = Path.Combine(baseOutputPath, subfolder);
+            if (!Directory.Exists(baseOutputPath))
+            {
+                Directory.CreateDirectory(baseOutputPath);
+            }
+        }
+
+        var fullOutputPath = Path.Combine(baseOutputPath, outputFilename ?? Path.ChangeExtension(Path.GetFileName(inputPath), ".csv"));
         return Path.ChangeExtension(fullOutputPath, extension);
     }
 }

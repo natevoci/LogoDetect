@@ -27,24 +27,21 @@ public class SharedDataManager
         GetOrCreateFrameData(time).LogoDiff = logoDiff;
     }
 
-    public void AddSceneChangeData(TimeSpan time, double changeAmount, string type)
+    public void AddMeanLuminance(TimeSpan time, double meanLuminance)
+    {
+        GetOrCreateFrameData(time).MeanLuminance = meanLuminance;
+    }
+
+    public void AddBlackWhiteFrame(TimeSpan time, bool isBlack, bool isWhite)
     {
         var frameData = GetOrCreateFrameData(time);
-        
-        switch (type.ToLower())
-        {
-            case "black":
-                frameData.IsBlackFrame = true;
-                frameData.MeanLuminance = changeAmount * 255.0; // Convert back to 0-255 range
-                break;
-            case "white":
-                frameData.IsWhiteFrame = true;
-                frameData.MeanLuminance = changeAmount * 255.0; // Convert back to 0-255 range
-                break;
-            case "scene":
-                frameData.SceneChange = changeAmount;
-                break;
-        }
+        frameData.IsBlackFrame = isBlack;
+        frameData.IsWhiteFrame = isWhite;
+    }
+
+    public void AddSceneChangeData(TimeSpan time, double changeAmount)
+    {
+        GetOrCreateFrameData(time).SceneChange = changeAmount;
     }
 
     private CombinedFrameData GetOrCreateFrameData(TimeSpan time)
