@@ -34,6 +34,14 @@ public class InstrumentedFrameProcessor : IFrameProcessor
         );
     }
 
+    public void SetSharedDataManager(SharedDataManager dataManager)
+    {
+        _performanceTracker.MeasureMethod(
+            $"{_processorName}.SetSharedDataManager",
+            () => _innerProcessor.SetSharedDataManager(dataManager)
+        );
+    }
+
     public void Initialize(IProgressMsg? progress = null)
     {
         _performanceTracker.MeasureMethod(

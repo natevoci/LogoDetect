@@ -27,6 +27,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private TimeSpan _lastProcessedFrameTime = TimeSpan.Zero;
     private Action<string>? _debugFileTracker;
     private SharedPlotManager? _sharedPlotManager;
+    private SharedDataManager? _sharedDataManager;
 
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
 
@@ -45,6 +46,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     public void SetSharedPlotManager(SharedPlotManager plotManager)
     {
         _sharedPlotManager = plotManager;
+    }
+
+    public void SetSharedDataManager(SharedDataManager dataManager)
+    {
+        _sharedDataManager = dataManager;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -98,6 +104,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         if (logoTimeSpan >= TimeSpan.Zero)
         {
             _logoDetections.Add(new LogoDetection(logoTimeSpan, logoDiff));
+            _sharedDataManager?.AddLogoDetection(logoTimeSpan, logoDiff);
         }
     }
 

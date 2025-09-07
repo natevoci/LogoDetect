@@ -17,6 +17,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
     private Action<string>? _debugFileTracker;
     private SharedPlotManager? _sharedPlotManager;
+    private SharedDataManager? _sharedDataManager;
 
     public IReadOnlyList<(TimeSpan Time, double ChangeAmount, string Type)> SceneChanges => _sceneChanges;
 
@@ -36,6 +37,11 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     public void SetSharedPlotManager(SharedPlotManager plotManager)
     {
         _sharedPlotManager = plotManager;
+    }
+
+    public void SetSharedDataManager(SharedDataManager dataManager)
+    {
+        _sharedDataManager = dataManager;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -82,15 +88,18 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         if (isBlack)
         {
             _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "black"));
+            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, meanLuminance / 255.0, "black");
         }
         else if (isWhite)
         {
             _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "white"));
+            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, meanLuminance / 255.0, "white");
         }
         else if (previous != null)
         {
             var changeAmount = _imageProcessor.CalculateSceneChangeAmount(previous.QuarterYData, current.QuarterYData);
             _sceneChanges.Add((current.TimeSpan, changeAmount, "scene"));
+            _sharedDataManager?.AddSceneChangeData(current.TimeSpan, changeAmount, "scene");
             // if (changeAmount > _settings.sceneThreshold)
             // {
             // }
