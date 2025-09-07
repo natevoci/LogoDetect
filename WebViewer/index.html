@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logo Detection Video Analysis Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #ddd;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        
+        .file-input {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            margin: 0;
+        }
+        
+        .checkbox-item label {
+            font-size: 14px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            padding: 10px 15px;
+            background-color: #e8f4f8;
+            border-bottom: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 3px;
+        }
+        
+        #plot {
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .instructions-toggle {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            flex-shrink: 0;
+        }
+        
+        .instructions-header {
+            padding: 10px 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            font-weight: bold;
+        }
+        
+        .instructions-header:hover {
+            background-color: #ffeaa7;
+        }
+        
+        .toggle-icon {
+            float: right;
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+        
+        .toggle-icon.expanded {
+            transform: rotate(180deg);
+        }
+        
+        .instructions-content {
+            padding: 0 15px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        
+        .instructions-content.expanded {
+            padding: 10px 15px;
+            max-height: 200px;
+        }
+        
+        .error {
+            margin: 10px 15px;
+            padding: 15px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #721c24;
+            flex-shrink: 0;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <div class="controls">
+            <div>
+                <label for="csvFile" class="file-input">
+                    📁 Load CSV File
+                    <input type="file" id="csvFile" accept=".csv" style="display: none;">
+                </label>
+            </div>
+            
+            <div class="checkbox-group">
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showLogoDiff" checked>
+                    <label for="showLogoDiff">Logo Detection</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showSceneChange" checked>
+                    <label for="showSceneChange">Scene Changes</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showBlackFrames" checked>
+                    <label for="showBlackFrames">Black Frames</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showWhiteFrames" checked>
+                    <label for="showWhiteFrames">White Frames</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showLuminance" checked>
+                    <label for="showLuminance">Mean Luminance</label>
+                </div>
+            </div>
+        </div>
+        
+        <div id="stats" class="stats" style="display: none;">
+            <div class="stat-item">
+                <div class="stat-value" id="totalFrames">-</div>
+                <div class="stat-label">Total Data Points</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="duration">-</div>
+                <div class="stat-label">Duration</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="blackFrameCount">-</div>
+                <div class="stat-label">Black Frames</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="whiteFrameCount">-</div>
+                <div class="stat-label">White Frames</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="avgLogoDiff">-</div>
+                <div class="stat-label">Avg Logo Detection</div>
+            </div>
+        </div>
+        
+        <div id="plot"></div>
+        
+        <div class="instructions-toggle">
+            <div class="instructions-header" onclick="toggleInstructions()">
+                📋 Instructions
+                <span class="toggle-icon" id="toggleIcon">▼</span>
+            </div>
+            <div class="instructions-content" id="instructionsContent">
+                <strong>How to use:</strong><br>
+                • Load a combined CSV file from your LogoDetect application<br>
+                • Use the checkboxes to show/hide different data series<br>
+                • Zoom by selecting an area on the graph or using mouse wheel<br>
+                • Pan by clicking and dragging<br>
+                • Use the toolbar buttons for specific zoom controls (zoom in/out, auto-scale, reset)<br>
+                • Double-click to reset zoom<br>
+                • Hover over data points for detailed information<br>
+                • <strong>URL Loading:</strong> Add <code>?csv=path/to/file.csv</code> to the URL to auto-load a file
+            </div>
+        </div>
+        
+        <div id="errorMessage" style="display: none;"></div>
+    </div>
+
+    <script>
+        let csvData = null;
+        let currentPlot = null;
+
+        // Check for CSV file in query string on page load
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const csvFile = urlParams.get('csv') || urlParams.get('file');
+            
+            if (csvFile) {
+                loadCSVFromURL(csvFile);
+            }
+        });
+
+        // Function to load CSV from URL
+        function loadCSVFromURL(url) {
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    try {
+                        csvData = parseCSV(csvText);
+                        updateStats(csvData);
+                        updatePlot();
+                        hideError();
+                        
+                        // Update the file input display (optional)
+                        console.log(`Loaded CSV from: ${url}`);
+                    } catch (error) {
+                        showError('Error parsing CSV file from URL: ' + error.message);
+                    }
+                })
+                .catch(error => {
+                    showError('Error loading CSV file from URL: ' + error.message);
+                });
+        }
+
+        // File input handler
+        document.getElementById('csvFile').addEventListener('change', handleFileSelect);
+        
+        // Checkbox handlers
+        const checkboxes = ['showLogoDiff', 'showSceneChange', 'showBlackFrames', 'showWhiteFrames', 'showLuminance'];
+        checkboxes.forEach(id => {
+            document.getElementById(id).addEventListener('change', updatePlot);
+        });
+
+        // Instructions toggle function
+        function toggleInstructions() {
+            const content = document.getElementById('instructionsContent');
+            const icon = document.getElementById('toggleIcon');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                icon.classList.remove('expanded');
+                icon.textContent = '▼';
+            } else {
+                content.classList.add('expanded');
+                icon.classList.add('expanded');
+                icon.textContent = '▲';
+            }
+            
+            // Resize plot after CSS transition completes
+            if (currentPlot) {
+                setTimeout(function() {
+                    Plotly.Plots.resize('plot');
+                }, 350); // Slightly longer than the 0.3s CSS transition
+            }
+        }
+
+        // Handle window resize to keep plot responsive
+        window.addEventListener('resize', function() {
+            if (currentPlot) {
+                Plotly.Plots.resize('plot');
+            }
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    csvData = parseCSV(e.target.result);
+                    updateStats(csvData);
+                    updatePlot();
+                    hideError();
+                } catch (error) {
+                    showError('Error parsing CSV file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',');
+                if (values.length === headers.length) {
+                    const row = {};
+                    headers.forEach((header, index) => {
+                        const value = values[index].trim();
+                        
+                        switch (header) {
+                            case 'Time':
+                                row[header] = parseTimeToSeconds(value);
+                                row['TimeString'] = value;
+                                break;
+                            case 'LogoDiff':
+                            case 'MeanLuminance':
+                            case 'SceneChange':
+                                row[header] = parseFloat(value);
+                                break;
+                            case 'IsBlackFrame':
+                            case 'IsWhiteFrame':
+                                row[header] = value.toLowerCase() === 'true';
+                                break;
+                            default:
+                                row[header] = value;
+                        }
+                    });
+                    data.push(row);
+                }
+            }
+            
+            return data;
+        }
+
+        function parseTimeToSeconds(timeString) {
+            // Parse HH:MM:SS.fff format
+            const parts = timeString.split(':');
+            if (parts.length === 3) {
+                const hours = parseInt(parts[0]);
+                const minutes = parseInt(parts[1]);
+                const seconds = parseFloat(parts[2]);
+                return hours * 3600 + minutes * 60 + seconds;
+            }
+            return 0;
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toFixed(3).padStart(6, '0')}`;
+        }
+
+        function updateStats(data) {
+            document.getElementById('totalFrames').textContent = data.length.toLocaleString();
+            
+            if (data.length > 0) {
+                const lastTime = Math.max(...data.map(d => d.Time));
+                document.getElementById('duration').textContent = formatTime(lastTime);
+                
+                const blackFrames = data.filter(d => d.IsBlackFrame).length;
+                const whiteFrames = data.filter(d => d.IsWhiteFrame).length;
+                document.getElementById('blackFrameCount').textContent = blackFrames.toLocaleString();
+                document.getElementById('whiteFrameCount').textContent = whiteFrames.toLocaleString();
+                
+                const validLogoDiffs = data.filter(d => d.LogoDiff > 0);
+                const avgLogoDiff = validLogoDiffs.length > 0 ? 
+                    (validLogoDiffs.reduce((sum, d) => sum + d.LogoDiff, 0) / validLogoDiffs.length) : 0;
+                document.getElementById('avgLogoDiff').textContent = avgLogoDiff.toFixed(3);
+            }
+            
+            document.getElementById('stats').style.display = 'grid';
+        }
+
+        function updatePlot() {
+            if (!csvData || csvData.length === 0) return;
+
+            const traces = [];
+            
+            // Logo Detection (right Y-axis)
+            if (document.getElementById('showLogoDiff').checked) {
+                const logoData = csvData.filter(d => d.LogoDiff > 0);
+                if (logoData.length > 0) {
+                    traces.push({
+                        x: logoData.map(d => d.Time),
+                        y: logoData.map(d => d.LogoDiff),
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Logo Detection',
+                        line: { color: '#2E8B57', width: 2 },
+                        yaxis: 'y2',
+                        hovertemplate: '<b>Logo Detection</b><br>' +
+                                     'Time: %{customdata}<br>' +
+                                     'Logo Diff: %{y:.6f}<br>' +
+                                     '<extra></extra>',
+                        customdata: logoData.map(d => d.TimeString)
+                    });
+                }
+            }
+
+            // Scene Changes (left Y-axis)
+            if (document.getElementById('showSceneChange').checked) {
+                const sceneData = csvData.filter(d => d.SceneChange > 0);
+                if (sceneData.length > 0) {
+                    traces.push({
+                        x: sceneData.map(d => d.Time),
+                        y: sceneData.map(d => d.SceneChange),
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'Scene Changes',
+                        marker: { color: '#4682B4', size: 4 },
+                        yaxis: 'y1',
+                        hovertemplate: '<b>Scene Change</b><br>' +
+                                     'Time: %{customdata}<br>' +
+                                     'Change Amount: %{y:.6f}<br>' +
+                                     '<extra></extra>',
+                        customdata: sceneData.map(d => d.TimeString)
+                    });
+                }
+            }
+
+            // Black Frames (left Y-axis)
+            if (document.getElementById('showBlackFrames').checked) {
+                const blackData = csvData.filter(d => d.IsBlackFrame);
+                if (blackData.length > 0) {
+                    traces.push({
+                        x: blackData.map(d => d.Time),
+                        y: blackData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'Black Frames',
+                        marker: { color: '#DC143C', size: 6, symbol: 'diamond' },
+                        yaxis: 'y1',
+                        hovertemplate: '<b>Black Frame</b><br>' +
+                                     'Time: %{customdata}<br>' +
+                                     'Luminance: %{y:.3f}<br>' +
+                                     '<extra></extra>',
+                        customdata: blackData.map(d => d.TimeString)
+                    });
+                }
+            }
+
+            // White Frames (left Y-axis)
+            if (document.getElementById('showWhiteFrames').checked) {
+                const whiteData = csvData.filter(d => d.IsWhiteFrame);
+                if (whiteData.length > 0) {
+                    traces.push({
+                        x: whiteData.map(d => d.Time),
+                        y: whiteData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'White Frames',
+                        marker: { color: '#4169E1', size: 6, symbol: 'diamond' },
+                        yaxis: 'y1',
+                        hovertemplate: '<b>White Frame</b><br>' +
+                                     'Time: %{customdata}<br>' +
+                                     'Luminance: %{y:.3f}<br>' +
+                                     '<extra></extra>',
+                        customdata: whiteData.map(d => d.TimeString)
+                    });
+                }
+            }
+
+            // Mean Luminance (left Y-axis) - only for frames that aren't black/white
+            if (document.getElementById('showLuminance').checked) {
+                const luminanceData = csvData.filter(d => !d.IsBlackFrame && !d.IsWhiteFrame && d.MeanLuminance > 0);
+                if (luminanceData.length > 0) {
+                    traces.push({
+                        x: luminanceData.map(d => d.Time),
+                        y: luminanceData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Mean Luminance',
+                        line: { color: '#FFD700', width: 1 },
+                        opacity: 0.7,
+                        yaxis: 'y1',
+                        hovertemplate: '<b>Mean Luminance</b><br>' +
+                                     'Time: %{customdata}<br>' +
+                                     'Luminance: %{y:.3f}<br>' +
+                                     '<extra></extra>',
+                        customdata: luminanceData.map(d => d.TimeString)
+                    });
+                }
+            }
+
+            const layout = {
+                title: 'Video Analysis Results',
+                xaxis: {
+                    title: 'Time (mm:ss)',
+                    showgrid: true,
+                    zeroline: false
+                },
+                yaxis: {
+                    title: 'Scene Change / Luminance (0-1)',
+                    side: 'left',
+                    showgrid: true,
+                    zeroline: false,
+                    range: [0, 1]
+                },
+                yaxis2: {
+                    title: 'Logo Detection Value',
+                    side: 'right',
+                    overlaying: 'y',
+                    showgrid: false,
+                    zeroline: false
+                },
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bordercolor: 'rgba(0,0,0,0.2)',
+                    borderwidth: 1
+                },
+                hovermode: 'closest',
+                showlegend: true,
+                plot_bgcolor: 'white',
+                paper_bgcolor: 'white'
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                displaylogo: false,
+                scrollZoom: true,
+                toImageButtonOptions: {
+                    format: 'png',
+                    filename: 'video_analysis',
+                    height: 600,
+                    width: 1200,
+                    scale: 1
+                }
+            };
+
+            Plotly.newPlot('plot', traces, layout, config).then(function() {
+                currentPlot = true;
+                
+                // Function to format time ticks
+                function formatTimeTicks() {
+                    const plotDiv = document.getElementById('plot');
+                    const xaxis = plotDiv._fullLayout.xaxis;
+                    
+                    // Get the tick elements directly from the DOM
+                    const tickLabels = plotDiv.querySelectorAll('.xtick text');
+                    
+                    tickLabels.forEach(label => {
+                        const tickValue = parseFloat(label.textContent);
+                        if (!isNaN(tickValue)) {
+                            const minutes = Math.floor(tickValue / 60);
+                            const seconds = Math.floor(tickValue % 60);
+                            label.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                        }
+                    });
+                }
+                
+                // Apply formatting after initial render
+                setTimeout(formatTimeTicks, 100);
+                
+                // Add event listener to keep Y-axes at auto range when zooming
+                const plotDiv = document.getElementById('plot');
+                plotDiv.on('plotly_relayout', function(eventdata) {
+                    // Check if this is a zoom event (xaxis range change) and not our own relayout
+                    if (eventdata['xaxis.range[0]'] !== undefined || eventdata['xaxis.range[1]'] !== undefined) {
+                        // Reset Y-axes to auto range to maintain vertical scaling
+                        Plotly.relayout('plot', {
+                            'yaxis.autorange': true,
+                            'yaxis2.autorange': true
+                        });
+                        
+                        // Reapply time formatting after zoom
+                        setTimeout(formatTimeTicks, 200);
+                    }
+                });
+                
+                // Also apply formatting after any redraw
+                plotDiv.on('plotly_redraw', function() {
+                    setTimeout(formatTimeTicks, 50);
+                });
+            });
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.innerHTML = '<div class="error"><strong>Error:</strong> ' + message + '</div>';
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        // Initialize with sample data message
+        document.getElementById('plot').innerHTML = '<div class="loading">📊 Load a CSV file to begin visualization</div>';
+    </script>
+</body>
+</html>
