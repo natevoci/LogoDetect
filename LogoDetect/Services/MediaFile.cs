@@ -21,6 +21,7 @@ public unsafe class MediaFile : IDisposable
     private AVPacket* _packet;
     private SwsContext* _swsContext;
     private int _videoStream = -1;
+    private long _frameZeroTimestamp;
     private long _currentTimestamp;
     private bool _disposed;
     private HardwareAccelMode _accelMode = HardwareAccelMode.None;
@@ -32,6 +33,12 @@ public unsafe class MediaFile : IDisposable
         _quarterFrame = av_frame_alloc();
         _packet = av_packet_alloc();
         InitFFmpeg(inputPath);
+
+        var frame = GetFrameAtTimestamp(0);
+        if (frame != null)
+        {
+            _frameZeroTimestamp = frame.Timestamp;
+        }
     }
 
     private unsafe void InitFFmpeg(string inputPath)
@@ -195,7 +202,7 @@ public unsafe class MediaFile : IDisposable
                     av_packet_unref(_packet);
                     var yData = new YData(yDataBytes, _frame->width, _frame->height, _frame->linesize[0]);
                     var quarterYData = new YData(quarterYDataBytes, _quarterFrame->width, _quarterFrame->height, _quarterFrame->linesize[0]);
-                    return new Frame(yData, quarterYData, _currentTimestamp);
+                    return new Frame(yData, quarterYData, _currentTimestamp - _frameZeroTimestamp);
                 }
                 av_packet_unref(_packet);
             }
@@ -234,31 +241,33 @@ public unsafe class MediaFile : IDisposable
         {
             return null;
         }
+        
+        timestamp += _frameZeroTimestamp;
 
         try
+        {
+            // Convert timestamp based on AV_TIME_BASE to stream time base
+            var tbn = _formatContext->streams[_videoStream]->time_base;
+            var streamTimestamp = (long)(timestamp / AV_TIME_BASE * tbn.den / (double)tbn.num);
+
+            int ret = av_seek_frame(_formatContext, _videoStream, streamTimestamp, AVSEEK_FLAG_BACKWARD);
+            if (ret < 0)
             {
-                // Convert timestamp based on AV_TIME_BASE to stream time base
-                var tbn = _formatContext->streams[_videoStream]->time_base;
-                var streamTimestamp = (long)(timestamp / AV_TIME_BASE * tbn.den / (double)tbn.num);
-
-                int ret = av_seek_frame(_formatContext, _videoStream, streamTimestamp, AVSEEK_FLAG_BACKWARD);
-                if (ret < 0)
-                {
-                    var bufferSize = 1024;
-                    var buffer = stackalloc byte[bufferSize];
-                    av_strerror(ret, buffer, (ulong)bufferSize);
-                    throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
-                }
-
-                // Flush codec buffers to ensure we don't get stale frames
-                avcodec_flush_buffers(_codecContext);
-
-                _currentTimestamp = timestamp;
+                var bufferSize = 1024;
+                var buffer = stackalloc byte[bufferSize];
+                av_strerror(ret, buffer, (ulong)bufferSize);
+                throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
             }
-            catch
-            {
-                return null;
-            }
+
+            // Flush codec buffers to ensure we don't get stale frames
+            avcodec_flush_buffers(_codecContext);
+
+            _currentTimestamp = timestamp;
+        }
+        catch
+        {
+            return null;
+        }
 
         return ReadNextFrame();
     }
@@ -268,11 +277,11 @@ public unsafe class MediaFile : IDisposable
         return GetFrameAtTimestamp(timeSpan.ToTimestamp());
     }
 
-    public long GetDuration() => _formatContext->duration;
+    public long GetDuration() => _formatContext->duration - _frameZeroTimestamp;
 
     public TimeSpan GetDurationTimeSpan()
     {
-        var durationInSeconds = _formatContext->duration / (double)AV_TIME_BASE;
+        var durationInSeconds = GetDuration() / (double)AV_TIME_BASE;
         return TimeSpan.FromSeconds(durationInSeconds);
     }
 
