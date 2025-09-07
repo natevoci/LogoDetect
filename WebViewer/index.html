@@ -422,7 +422,7 @@
                         type: 'scatter',
                         mode: 'lines',
                         name: 'Logo Detection',
-                        line: { color: '#2E8B57', width: 2 },
+                        line: { color: '#0000FF', width: 2 },
                         yaxis: 'y2',
                         hovertemplate: '<b>Logo Detection</b><br>' +
                                      'Time: %{customdata}<br>' +
@@ -443,7 +443,7 @@
                         type: 'scatter',
                         mode: 'markers',
                         name: 'Scene Changes',
-                        marker: { color: '#4682B4', size: 4 },
+                        marker: { color: 'rgba(128, 128, 128, 0.25)', size: 4 },
                         yaxis: 'y1',
                         hovertemplate: '<b>Scene Change</b><br>' +
                                      'Time: %{customdata}<br>' +
@@ -464,7 +464,7 @@
                         type: 'scatter',
                         mode: 'markers',
                         name: 'Black Frames',
-                        marker: { color: '#DC143C', size: 6, symbol: 'diamond' },
+                        marker: { color: '#FF0000', size: 6, symbol: 'diamond' },
                         yaxis: 'y1',
                         hovertemplate: '<b>Black Frame</b><br>' +
                                      'Time: %{customdata}<br>' +
@@ -485,7 +485,7 @@
                         type: 'scatter',
                         mode: 'markers',
                         name: 'White Frames',
-                        marker: { color: '#4169E1', size: 6, symbol: 'diamond' },
+                        marker: { color: '#FFA500', size: 6, symbol: 'diamond' },
                         yaxis: 'y1',
                         hovertemplate: '<b>White Frame</b><br>' +
                                      'Time: %{customdata}<br>' +
@@ -494,6 +494,25 @@
                         customdata: whiteData.map(d => d.TimeString)
                     });
                 }
+            }
+
+            // Threshold line at 1.0 on y2 axis
+            if (csvData.length > 0) {
+                const minTime = Math.min(...csvData.map(d => d.Time));
+                const maxTime = Math.max(...csvData.map(d => d.Time));
+                traces.push({
+                    x: [minTime, maxTime],
+                    y: [1.0, 1.0],
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Threshold (1.0)',
+                    line: { color: '#FF0000', width: 2, dash: 'dash' },
+                    yaxis: 'y2',
+                    hovertemplate: '<b>Threshold</b><br>' +
+                                 'Value: 1.0<br>' +
+                                 '<extra></extra>',
+                    showlegend: true
+                });
             }
 
             // Mean Luminance (left Y-axis) - only for frames that aren't black/white
@@ -579,7 +598,13 @@
                     const tickLabels = plotDiv.querySelectorAll('.xtick text');
                     
                     tickLabels.forEach(label => {
-                        const tickValue = parseFloat(label.textContent);
+                        // Store original value if not already stored
+                        if (!label.hasAttribute('data-original-value')) {
+                            label.setAttribute('data-original-value', label.textContent);
+                        }
+                        
+                        // Use stored original value for formatting
+                        const tickValue = parseFloat(label.getAttribute('data-original-value'));
                         if (!isNaN(tickValue)) {
                             const minutes = Math.floor(tickValue / 60);
                             const seconds = Math.floor(tickValue % 60);
