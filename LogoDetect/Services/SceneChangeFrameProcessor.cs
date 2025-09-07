@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LogoDetect.Models;
+using ScottPlot;
 
 namespace LogoDetect.Services;
 
@@ -15,6 +16,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     private readonly List<(TimeSpan Time, double ChangeAmount, string Type)> _sceneChanges = new();
 
     private Action<string>? _debugFileTracker;
+    private SharedPlotManager? _sharedPlotManager;
 
     public IReadOnlyList<(TimeSpan Time, double ChangeAmount, string Type)> SceneChanges => _sceneChanges;
 
@@ -29,6 +31,11 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     public void SetDebugFileTracker(Action<string> tracker)
     {
         _debugFileTracker = tracker;
+    }
+
+    public void SetSharedPlotManager(SharedPlotManager plotManager)
+    {
+        _sharedPlotManager = plotManager;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -70,7 +77,7 @@ public class SceneChangeFrameProcessor : IFrameProcessor
     public void ProcessFrame(Frame current, Frame? previous)
     {
         // Use the optimized combined function to check for black or white frames with mean luminance
-        var (isBlack, isWhite, meanLuminance) = _imageProcessor.IsBlackOrWhiteFrame(current.YData, _settings.blankThreshold);
+        var (isBlack, isWhite, meanLuminance) = _imageProcessor.IsBlackOrWhiteFrame(current.QuarterYData, _settings.blankThreshold);
         
         if (isBlack)
         {
@@ -111,19 +118,16 @@ public class SceneChangeFrameProcessor : IFrameProcessor
             }
         }
 
-        // Save visualization of scene changes
-        var graphFilePath = Path.ChangeExtension(scenePath, ".png");
-        SaveSceneChangeGraph(_sceneChanges.ToList(), graphFilePath);
-        _debugFileTracker?.Invoke(graphFilePath);
-    }
-    
-    private void SaveSceneChangeGraph(List<(TimeSpan Time, double ChangeAmount, string Type)> sceneChanges, string graphFilePath)
-    {
-        if (File.Exists(graphFilePath))
+        // Add scene change data to shared plot if available
+        if (_sharedPlotManager != null)
         {
-            File.Delete(graphFilePath);
+            SaveSceneChangeDataToSharedPlot(_sharedPlotManager);
         }
+    }
 
+    private void SaveSceneChangeDataToSharedPlot(SharedPlotManager plotManager)
+    {
+        var sceneChanges = _sceneChanges;
         // Check if there are any scene changes to plot
         if (sceneChanges == null || sceneChanges.Count == 0)
         {
@@ -133,90 +137,56 @@ public class SceneChangeFrameProcessor : IFrameProcessor
 
         try
         {
-            var plot = new ScottPlot.Plot();
+            var plot = plotManager.GetSharedPlot();
 
             // Split data by type
             var sceneChangeData = sceneChanges.Where(x => x.Type == "scene").ToList();
             var blackFrameData = sceneChanges.Where(x => x.Type == "black").ToList();
             var whiteFrameData = sceneChanges.Where(x => x.Type == "white").ToList();
 
-            // Add scene changes as columns (green)
+            // Add scene changes as scatter plot (using left Y-axis)
             if (sceneChangeData.Any())
             {
                 var sceneChangeColumns = plot.Add.Scatter(
                     sceneChangeData.Select(d => d.Time.TotalSeconds).ToArray(),
                     sceneChangeData.Select(d => d.ChangeAmount).ToArray());
-                sceneChangeColumns.Color = new ScottPlot.Color(64, 64, 64);
+                sceneChangeColumns.Color = new ScottPlot.Color(64, 64, 64, 64);
                 sceneChangeColumns.LineWidth = 0;
                 sceneChangeColumns.MarkerSize = 4;
-                plot.Legend.IsVisible = true;
+                sceneChangeColumns.LegendText = "Scene Changes";
             }
 
-            // Add black frames as black dots
+            // Add black frames as red dots (using left Y-axis)
             if (blackFrameData.Any())
             {
                 var blackFrameDots = plot.Add.Scatter(
                     blackFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
                     blackFrameData.Select(d => d.ChangeAmount).ToArray());
-                blackFrameDots.Color = new ScottPlot.Color(255, 0, 0);
+                blackFrameDots.Color = Colors.Red;
                 blackFrameDots.LineWidth = 0;
                 blackFrameDots.MarkerSize = 5;
-                plot.Legend.IsVisible = true;
+                blackFrameDots.LegendText = "Black Frames";
             }
 
-            // Add white frames as black dots
+            // Add white frames as orange dots (using left Y-axis)
             if (whiteFrameData.Any())
             {
                 var whiteFrameDots = plot.Add.Scatter(
                     whiteFrameData.Select(d => d.Time.TotalSeconds).ToArray(),
                     whiteFrameData.Select(d => d.ChangeAmount).ToArray());
-                whiteFrameDots.Color = new ScottPlot.Color(0, 0, 255);
+                whiteFrameDots.Color = Colors.Orange;
                 whiteFrameDots.LineWidth = 0;
                 whiteFrameDots.MarkerSize = 5;
-                plot.Legend.IsVisible = true;
+                whiteFrameDots.LegendText = "White Frames";
             }
-
-            // Configure axes
-            plot.Axes.Title.Label.Text = "Scene Changes and Blank/White Frames";
-            plot.Axes.Bottom.Label.Text = "Time";
-            plot.Axes.Left.Label.Text = "Change Amount";
-
-            // Format X axis as time
-            var durationTimeSpan = _mediaFile.GetDurationTimeSpan();
-            plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-                positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                    .Select(m => m * 60.0)
-                    .ToArray(),
-                labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                    .Select(m => $"{m}m")
-                    .ToArray()
-            );
-
-            // Format Y axis with fixed range 0-1
-            plot.Axes.Left.Range.Set(0, 1);
-            plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-                positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
-                labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()
-            );
-
-            // Style the plot
-            plot.FigureBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-            plot.DataBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-            plot.Grid.MajorLineColor = new ScottPlot.Color(200, 200, 200); // Light gray
-            plot.Grid.MajorLineWidth = 1;
-
-            // Save the plot
-            plot.SavePng(graphFilePath, 2000, 1000);
-            _debugFileTracker?.Invoke(graphFilePath);
         }
         catch (Exception ex)
         {
 #if DEBUG
-            Console.WriteLine($"Error generating scene change graph: {ex}");
+            Console.WriteLine($"Error adding scene change data to shared plot: {ex}");
 #else
-            Console.WriteLine($"Error generating scene change graph: {ex.Message}");
+            Console.WriteLine($"Error adding scene change data to shared plot: {ex.Message}");
 #endif
         }
     }
-
 }

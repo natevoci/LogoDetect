@@ -58,6 +58,14 @@ public class VideoProcessor : IDisposable
         var logoDetectionProcessor = new LogoDetectionFrameProcessor(_settings, _mediaFile, _imageProcessor);
         var sceneChangeProcessor = new SceneChangeFrameProcessor(_settings, _mediaFile, _imageProcessor, _performanceTracker);
 
+        // Create shared plot manager
+        var sharedPlotManager = new SharedPlotManager(_settings, _mediaFile);
+        sharedPlotManager.SetDebugFileTracker(AddDebugFile);
+
+        // Set up the processors with the shared plot manager
+        logoDetectionProcessor.SetSharedPlotManager(sharedPlotManager);
+        sceneChangeProcessor.SetSharedPlotManager(sharedPlotManager);
+
         await _performanceTracker.MeasureMethodAsync(
             "ProcessFrames",
             async () => await ProcessFrames([
@@ -65,6 +73,9 @@ public class VideoProcessor : IDisposable
                 new InstrumentedFrameProcessor(sceneChangeProcessor, _performanceTracker),
             ], new Progress())
         );
+
+        // Save the combined plot after all processors are complete
+        sharedPlotManager.SaveCombinedGraph();
 
         stopwatch.Stop();
         Console.WriteLine($"\nFrames processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");

@@ -26,6 +26,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private bool _initialized = false;
     private TimeSpan _lastProcessedFrameTime = TimeSpan.Zero;
     private Action<string>? _debugFileTracker;
+    private SharedPlotManager? _sharedPlotManager;
 
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
 
@@ -39,6 +40,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     public void SetDebugFileTracker(Action<string> tracker)
     {
         _debugFileTracker = tracker;
+    }
+
+    public void SetSharedPlotManager(SharedPlotManager plotManager)
+    {
+        _sharedPlotManager = plotManager;
     }
 
     public void Initialize(IProgressMsg? progress = null)
@@ -118,7 +124,11 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
         _debugFileTracker?.Invoke(logoDetectionsPath);
 
-        SaveGraphOfLogoDetectionsWithMethod(_settings.logoThreshold, _mediaFile.GetDurationTimeSpan(), _logoDetections, "edge");
+        // Add logo detection data to shared plot if available
+        if (_sharedPlotManager != null)
+        {
+            SaveLogoDetectionDataToSharedPlot(_sharedPlotManager, _logoDetections, "edge");
+        }
     }
 
     private void GenerateLogoReference(IProgressMsg? progress = null)
@@ -204,7 +214,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         var baseValue = 127.0f;
         var originalThreshold = 0.2f * baseValue; // Original threshold for deviation from base value
         var threshold = originalThreshold;
-        
+
         int minX = _width, maxX = 0, minY = _height, maxY = 0;
         bool logoFound = false;
         float maxDeviation = 0.0f;
@@ -226,7 +236,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
                 {
                     var deviation = Math.Abs(matrix[y, x] - baseValue);
                     maxDeviation = Math.Max(maxDeviation, deviation);
-                    
+
                     if (deviation > threshold)
                     {
                         logoFound = true;
@@ -246,7 +256,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
                 var boundingArea = (maxX - minX + 1) * (maxY - minY + 1);
                 var totalArea = _width * _height;
                 var areaPercentage = (double)boundingArea / totalArea;
-                
+
                 if (areaPercentage > 0.25 && maxDeviation > (threshold * 1.6f))
                 {
                     Console.WriteLine($"Bounding rectangle covers {areaPercentage:P1} of image and max deviation is > 1.6x threshold. Increasing threshold and retrying...");
@@ -293,10 +303,10 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             return;
 
         var boundingPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.bounding.png");
-        
+
         // Create a copy of the logo reference for visualization
         var visualMatrix = _logoReference.MatrixData.Clone();
-        
+
         // Draw the bounding rectangle on the visualization
         // Top and bottom horizontal lines
         for (int x = _logoBoundingRect.Left; x < _logoBoundingRect.Right; x++)
@@ -309,7 +319,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
                     visualMatrix[_logoBoundingRect.Bottom - 1, x] = 255.0f; // White line
             }
         }
-        
+
         // Left and right vertical lines
         for (int y = _logoBoundingRect.Top; y < _logoBoundingRect.Bottom; y++)
         {
@@ -327,16 +337,8 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         _debugFileTracker?.Invoke(boundingPath);
     }
 
-    private void SaveGraphOfLogoDetectionsWithMethod(double logoThreshold, TimeSpan durationTimeSpan, List<LogoDetection> logoDetections, string method)
+    private void SaveLogoDetectionDataToSharedPlot(SharedPlotManager plotManager, List<LogoDetection> logoDetections, string method)
     {
-        var graphFilePath = Path.ChangeExtension(_mediaFile.FilePath, $".logodifferences.{method}.png");
-
-        // Delete existing file if it exists
-        if (File.Exists(graphFilePath))
-        {
-            File.Delete(graphFilePath);
-        }
-
         // Check if there are any logo detections to plot
         if (logoDetections == null || logoDetections.Count == 0)
         {
@@ -346,7 +348,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         try
         {
-            var plot = new Plot();
+            var plot = plotManager.GetSharedPlot();
 
             var times = logoDetections.Select(d => d.Time.TotalSeconds).ToArray();
             var diffs = logoDetections.Select(d => (double)d.LogoDiff).ToArray();
@@ -363,55 +365,31 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             line.Color = Colors.Blue;
             line.MarkerSize = 0;
             line.LegendText = $"Logo Differences ({method})";
+            line.Axes.YAxis = plot.Axes.Right;
 
             // Add horizontal threshold line
-            var threshold = plot.Add.HorizontalLine(logoThreshold);
+            var threshold = plot.Add.HorizontalLine(_settings.logoThreshold);
             threshold.Color = Colors.Red;
             threshold.LinePattern = ScottPlot.LinePattern.Dashed;
             threshold.LineWidth = 2;
             threshold.LegendText = "Logo Threshold";
+            threshold.Axes.YAxis = plot.Axes.Right;
 
-            // Configure axes
-            plot.Title($"Logo Detection Results - {method}");
-            plot.XLabel("Time (seconds)");
-            plot.YLabel("Logo Difference");
-
-            // Format X axis as time
-            plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-                positions: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                    .Select(m => m * 60.0)
-                    .ToArray(),
-                labels: Enumerable.Range(0, (int)(durationTimeSpan.TotalMinutes) + 1)
-                    .Select(m => TimeSpan.FromMinutes(m).ToString(@"mm\:ss"))
-                    .ToArray()
-            );
-
-            // Format Y axis
-            plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericManual(
-                positions: Enumerable.Range(0, 6).Select(n => n * 0.2).ToArray(),
-                labels: Enumerable.Range(0, 6).Select(n => (n * 0.2).ToString("F1")).ToArray()
-            );
-
-            // Style the plot
-            plot.FigureBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-            plot.DataBackground.Color = new ScottPlot.Color(255, 255, 255); // White
-            plot.Grid.MajorLineColor = new ScottPlot.Color(200, 200, 200); // Light gray
-            plot.Grid.MajorLineWidth = 1;
-
-            // Add legend for threshold line
-            plot.Legend.IsVisible = true;
-            threshold.LabelText = "Threshold";
-
-            // Save the plot
-            plot.SavePng(graphFilePath, 2000, 1000);
-            _debugFileTracker?.Invoke(graphFilePath);
+            // Configure right Y-axis range based on the data
+            // var maxDiff = logoDetections.Max(d => (double)d.LogoDiff);
+            // var minDiff = logoDetections.Min(d => (double)d.LogoDiff);
+            // var range = maxDiff - minDiff;
+            // var padding = range * 0.1; // 10% padding
+            
+            // plot.Axes.Right.Range.Set(Math.Max(0, minDiff - padding), maxDiff + padding);
+            // plot.Axes.Right.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
         }
         catch (Exception ex)
         {
 #if DEBUG
-            Console.WriteLine($"Error generating logo detection graph for method {method}: {ex}");
+            Console.WriteLine($"Error adding logo detection data to shared plot: {ex}");
 #else
-            Console.WriteLine($"Error generating logo detection graph for method {method}: {ex.Message}");
+            Console.WriteLine($"Error adding logo detection data to shared plot: {ex.Message}");
 #endif
         }
     }
