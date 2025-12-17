@@ -5,6 +5,8 @@ using SkiaSharp;
 using ScottPlot;
 using System.Runtime.Versioning;
 using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace LogoDetect.Services;
 
@@ -331,29 +333,29 @@ public class VideoProcessor : IDisposable
     {
         var mediaFileName = Path.GetFileName(_settings.inputPath);
         
-        var lines = new List<string>
+        var cutSegments = segments.Select(segment => new
         {
-            "{",
-            "  version: 2,",
-            $"  mediaFileName: '{mediaFileName}',",
-            "  cutSegments: ["
+            start = (int)segment.Start.TotalSeconds,
+            end = (int)segment.End.TotalSeconds,
+            name = "",
+            selected = true
+        }).ToArray();
+
+        var losslessCutData = new
+        {
+            version = 2,
+            mediaFileName = mediaFileName,
+            cutSegments = cutSegments
         };
 
-        for (int i = 0; i < segments.Count; i++)
+        var options = new JsonSerializerOptions
         {
-            var segment = segments[i];
-            lines.Add("    {");
-            lines.Add($"      start: {segment.Start.TotalSeconds:F0},");
-            lines.Add($"      end: {segment.End.TotalSeconds:F0},");
-            lines.Add("      name: '',");
-            lines.Add("      selected: true,");
-            lines.Add(i < segments.Count - 1 ? "    }," : "    }");
-        }
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
 
-        lines.Add("  ],");
-        lines.Add("}");
-
-        File.WriteAllLines(outputPath, lines);
+        var json = JsonSerializer.Serialize(losslessCutData, options);
+        File.WriteAllText(outputPath, json);
     }
 
     private List<VideoSegment> ExtendSegmentsToSceneChanges(
