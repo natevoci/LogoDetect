@@ -442,7 +442,7 @@ public class PerformanceTracker : IDisposable
         {
             var stats = new Dictionary<string, MethodStatistics>();
             
-            foreach (var group in _metrics.GroupBy(m => m.MethodName))
+            foreach (var group in _session.Metrics.GroupBy(m => m.MethodName))
             {
                 var methodMetrics = group.OrderBy(m => m.ElapsedMilliseconds).ToList();
                 var statistics = new MethodStatistics
@@ -465,15 +465,26 @@ public class PerformanceTracker : IDisposable
     }
 
     /// <summary>
-    /// Exports detailed performance data to a JSON file
+    /// Ends the performance tracking session
     /// </summary>
-    public void ExportToJson(string filePath)
+    public void FinalizeStatistics()
     {
         lock (_lockObject)
         {
             _session.SessionEnd = DateTime.UtcNow;
             _session.Metrics.Clear();
             _session.Metrics.AddRange(_metrics.OrderBy(m => m.StartTime));
+            _metrics.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Exports detailed performance data to a JSON file
+    /// </summary>
+    public void ExportToJson(string filePath)
+    {
+        lock (_lockObject)
+        {
 
             var options = new JsonSerializerOptions
             {

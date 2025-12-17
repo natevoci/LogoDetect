@@ -87,6 +87,11 @@ public class Program
             description: "Maximum number of frames to process (for debugging/testing)",
             getDefaultValue: () => null);
 
+        var exportPerformanceJsonOption = new Option<bool>(
+            name: "--export-performance-json",
+            description: "Export detailed performance data to JSON file",
+            getDefaultValue: () => false);
+
         var rootCommand = new RootCommand("LogoDetect - Video logo detection and CSV cut list generation tool")
         {
             inputOption,
@@ -97,7 +102,8 @@ public class Program
             minDurationOption,
             outputOption,
             keepDebugFilesOption,
-            maxFramesOption
+            maxFramesOption,
+            exportPerformanceJsonOption
         };
 
         rootCommand.SetHandler(async (context) =>
@@ -113,6 +119,7 @@ public class Program
                 var output = context.ParseResult.GetValueForOption(outputOption);
                 var keepDebugFiles = context.ParseResult.GetValueForOption(keepDebugFilesOption);
                 var maxFrames = context.ParseResult.GetValueForOption(maxFramesOption);
+                var exportPerformanceJson = context.ParseResult.GetValueForOption(exportPerformanceJsonOption);
 
                 // Normalize the input path to handle mixed slashes
                 var normalizedInputPath = Path.GetFullPath(input.FullName);
@@ -150,6 +157,7 @@ public class Program
                     forceReload = reload,
                     keepDebugFiles = keepDebugFiles,
                     maxFramesToProcess = maxFrames,
+                    exportPerformanceJson = exportPerformanceJson,
                 });
                 stopwatch.Stop();
                 Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");

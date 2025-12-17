@@ -28,6 +28,7 @@ public class VideoProcessorSettings
     public bool forceReload;
     public bool keepDebugFiles;
     public int? maxFramesToProcess = null;
+    public bool exportPerformanceJson = false;
 
     public string GetOutputFileWithExtension(string extension, string? subfolder = null)
     {
@@ -147,16 +148,19 @@ public class VideoProcessor : IDisposable
         // Export performance data
         try
         {
-            var performanceOutputPath = Path.ChangeExtension(fullOutputPath, ".performance.csv");
-            _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
-            Console.WriteLine($"Performance CSV exported successfully");
+            _performanceTracker.FinalizeStatistics();
 
-            var performanceJsonPath = Path.ChangeExtension(fullOutputPath, ".performance.json");
-            _performanceTracker.ExportToJson(performanceJsonPath);
-            Console.WriteLine($"Performance JSON exported successfully");
+            if (_settings.exportPerformanceJson)
+            {
 
-            Console.WriteLine($"Performance data written to: {performanceOutputPath}");
-            Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
+                var performanceOutputPath = Path.ChangeExtension(fullOutputPath, ".performance.csv");
+                _performanceTracker.ExportStatisticsToCsv(performanceOutputPath);
+                Console.WriteLine($"Performance data written to: {performanceOutputPath}");
+            
+                var performanceJsonPath = Path.ChangeExtension(fullOutputPath, ".performance.json");
+                _performanceTracker.ExportToJson(performanceJsonPath);
+                Console.WriteLine($"Detailed performance data written to: {performanceJsonPath}");
+            }
 
             // Print performance statistics to console
             _performanceTracker.PrintStatistics();
