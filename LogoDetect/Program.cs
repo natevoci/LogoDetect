@@ -92,6 +92,11 @@ public class Program
             description: "Export detailed performance data to JSON file",
             getDefaultValue: () => false);
 
+        var losslessCutOption = new Option<bool>(
+            name: "--losslesscut",
+            description: "Output in LosslessCut project format (.llc) instead of CSV",
+            getDefaultValue: () => false);
+
         var rootCommand = new RootCommand("LogoDetect - Video logo detection and CSV cut list generation tool")
         {
             inputOption,
@@ -103,7 +108,8 @@ public class Program
             outputOption,
             keepDebugFilesOption,
             maxFramesOption,
-            exportPerformanceJsonOption
+            exportPerformanceJsonOption,
+            losslessCutOption
         };
 
         rootCommand.SetHandler(async (context) =>
@@ -120,6 +126,7 @@ public class Program
                 var keepDebugFiles = context.ParseResult.GetValueForOption(keepDebugFilesOption);
                 var maxFrames = context.ParseResult.GetValueForOption(maxFramesOption);
                 var exportPerformanceJson = context.ParseResult.GetValueForOption(exportPerformanceJsonOption);
+                var losslessCut = context.ParseResult.GetValueForOption(losslessCutOption);
 
                 // Normalize the input path to handle mixed slashes
                 var normalizedInputPath = Path.GetFullPath(input.FullName);
@@ -158,6 +165,7 @@ public class Program
                     keepDebugFiles = keepDebugFiles,
                     maxFramesToProcess = maxFrames,
                     exportPerformanceJson = exportPerformanceJson,
+                    losslessCut = losslessCut,
                 });
                 stopwatch.Stop();
                 Console.WriteLine($"Video loaded in {stopwatch.Elapsed.TotalSeconds:F1} seconds");

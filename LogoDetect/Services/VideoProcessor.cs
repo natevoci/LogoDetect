@@ -29,6 +29,7 @@ public class VideoProcessorSettings
     public bool keepDebugFiles;
     public int? maxFramesToProcess = null;
     public bool exportPerformanceJson = false;
+    public bool losslessCut = false;
 
     public string GetOutputFileWithExtension(string extension, string? subfolder = null)
     {
@@ -122,28 +123,41 @@ public class VideoProcessor : IDisposable
         stopwatch.Stop();
         Console.WriteLine($"Segments generated in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
-        // Write segments to CSV file
+        // Write segments to CSV or LLC file
         stopwatch.Restart();
-        var fullOutputPath = _settings.GetOutputFileWithExtension(".csv");
+        string fullOutputPath;
         try
         {
-            File.WriteAllLines(fullOutputPath, segments.Select(s => s.ToString()));
-            Console.WriteLine($"CSV file written successfully");
+            if (_settings.losslessCut)
+            {
+                // Write LLC (LosslessCut) file
+                fullOutputPath = _settings.GetOutputFileWithExtension(".llc");
+                WriteLosslessCutFile(fullOutputPath, segments);
+                Console.WriteLine($"LLC file written successfully");
+            }
+            else
+            {
+                // Write CSV file
+                fullOutputPath = _settings.GetOutputFileWithExtension(".csv");
+                File.WriteAllLines(fullOutputPath, segments.Select(s => s.ToString()));
+                Console.WriteLine($"CSV file written successfully");
+            }
         }
         catch (Exception ex)
         {
 #if DEBUG
-            Console.WriteLine($"Error writing CSV file: {ex}");
+            Console.WriteLine($"Error writing output file: {ex}");
 #else
-            Console.WriteLine($"Error writing CSV file: {ex.Message}");
+            Console.WriteLine($"Error writing output file: {ex.Message}");
 #endif
             throw;
         }
         stopwatch.Stop();
-        Console.WriteLine($"CSV file written in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
+        var outputFormat = _settings.losslessCut ? "LLC" : "CSV";
+        Console.WriteLine($"{outputFormat} file written in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
         Console.WriteLine("Processing complete!");
-        Console.WriteLine($"CSV file written to: {fullOutputPath}");
+        Console.WriteLine($"{outputFormat} file written to: {fullOutputPath}");
 
         // Export performance data
         try
@@ -311,6 +325,35 @@ public class VideoProcessor : IDisposable
         }
 
         return segments;
+    }
+
+    private void WriteLosslessCutFile(string outputPath, List<VideoSegment> segments)
+    {
+        var mediaFileName = Path.GetFileName(_settings.inputPath);
+        
+        var lines = new List<string>
+        {
+            "{",
+            "  version: 2,",
+            $"  mediaFileName: '{mediaFileName}',",
+            "  cutSegments: ["
+        };
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            var segment = segments[i];
+            lines.Add("    {");
+            lines.Add($"      start: {segment.Start.TotalSeconds:F0},");
+            lines.Add($"      end: {segment.End.TotalSeconds:F0},");
+            lines.Add("      name: '',");
+            lines.Add("      selected: true,");
+            lines.Add(i < segments.Count - 1 ? "    }," : "    }");
+        }
+
+        lines.Add("  ],");
+        lines.Add("}");
+
+        File.WriteAllLines(outputPath, lines);
     }
 
     private List<VideoSegment> ExtendSegmentsToSceneChanges(
