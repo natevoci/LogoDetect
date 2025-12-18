@@ -47,7 +47,7 @@ public class VideoProcessorSettings
         }
 
         var fullOutputPath = Path.Combine(baseOutputPath, outputFilename ?? Path.ChangeExtension(Path.GetFileName(inputPath), ".csv"));
-        return Path.ChangeExtension(fullOutputPath, extension);
+        return Path.Combine(Path.GetDirectoryName(fullOutputPath) ?? baseOutputPath, Path.GetFileNameWithoutExtension(fullOutputPath) + extension);
     }
 }
 
