@@ -390,7 +390,7 @@
             document.getElementById('totalFrames').textContent = data.length.toLocaleString();
             
             if (data.length > 0) {
-                const lastTime = Math.max(...data.map(d => d.Time));
+                const lastTime = data.reduce((max, d) => Math.max(max, d.Time), 0);
                 document.getElementById('duration').textContent = formatTime(lastTime);
                 
                 const blackFrames = data.filter(d => d.IsBlackFrame).length;
@@ -498,8 +498,8 @@
 
             // Threshold line at 1.0 on y2 axis
             if (csvData.length > 0) {
-                const minTime = Math.min(...csvData.map(d => d.Time));
-                const maxTime = Math.max(...csvData.map(d => d.Time));
+                const minTime = csvData.reduce((min, d) => Math.min(min, d.Time), Infinity);
+                const maxTime = csvData.reduce((max, d) => Math.max(max, d.Time), 0);
                 traces.push({
                     x: [minTime, maxTime],
                     y: [1.0, 1.0],
