@@ -140,6 +140,13 @@ public class YData
         debugFileTracker?.Invoke(path);
     }
 
+    public void SaveBitmapToStream(Stream stream)
+    {
+        using var bitmap = ToBitmap();
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        data.SaveTo(stream);
+    }
+
     public static YData LoadFromFile(string path)
     {
         using var bitmap = SKBitmap.Decode(path);

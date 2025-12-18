@@ -1,4 +1,5 @@
 ﻿using System.CommandLine;
+using System.IO;
 using LogoDetect.Services;
 using Velopack;
 
@@ -9,6 +10,7 @@ public class Program
     private const string GithubOwner = "natevoci";
     private const string GithubRepo = "LogoDetect";
 
+    [STAThread]
     public static int Main(string[] args)
     {
         // Check for updates using Velopack

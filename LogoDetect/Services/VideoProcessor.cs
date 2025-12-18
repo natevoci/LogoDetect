@@ -3,6 +3,7 @@ using LogoDetect.Models;
 using MathNet.Numerics.LinearAlgebra;
 using SkiaSharp;
 using ScottPlot;
+using System.IO;
 using System.Runtime.Versioning;
 using System.Threading.Tasks;
 using System.Text.Json;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using MathNet.Numerics.LinearAlgebra;
 using LogoDetect.Models;
 using ScottPlot;
@@ -292,6 +293,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         if (logoFound)
         {
+            Console.WriteLine($"Logo bounds found using threshold {threshold:F2} completed.");
             // Add some padding to the bounding rectangle
             var padding = 10;
             _logoReference.BoundingRect = new Rectangle(
@@ -303,11 +305,40 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
         else
         {
+            Console.WriteLine($"Logo bounds not found using threshold {threshold:F2}. Using entire frame.");
             // If no logo found, use the entire frame
             _logoReference.BoundingRect = new Rectangle(0, 0, _width, _height);
         }
 
+        // Interactively confirm bounding rectangle with user
+        ShowBoundingBoxSelector();
+
         SaveLogoBoundingVisualization();
+    }
+
+    private void ShowBoundingBoxSelector()
+    {
+        if (_logoReference == null)
+            return;
+
+        try
+        {
+            var selector = new BoundingBoxSelector(_logoReference, _logoReference.BoundingRect);
+            if (selector.ShowDialog() == true)
+            {
+                _logoReference.BoundingRect = selector.SelectedBounds;
+                Console.WriteLine($"User selected bounding box: {_logoReference.BoundingRect}");
+            }
+            else
+            {
+                Console.WriteLine("User cancelled bounding box selection, keeping auto-detected bounds");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error showing bounding box selector: {ex.Message}");
+            Console.WriteLine("Continuing with auto-detected bounds");
+        }
     }
 
     private void SaveLogoBoundingVisualization()
