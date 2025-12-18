@@ -78,7 +78,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     public void ProcessFrame(Frame current, Frame? previous)
     {
-        if (!_initialized || _logoReference == null)
+        if (!_initialized || _logoReference == null || _logoReference.BoundingRect == Rectangle.Empty)
             return;
 
         // Only process frames that are at least 1 second apart
@@ -331,7 +331,8 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             }
             else
             {
-                Console.WriteLine("User cancelled bounding box selection, keeping auto-detected bounds");
+                _logoReference.BoundingRect = Rectangle.Empty;
+                Console.WriteLine("User indicated no logo present, setting bounding box to empty.");
             }
         }
         catch (Exception ex)
@@ -343,7 +344,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     private void SaveLogoBoundingVisualization()
     {
-        if (_logoReference == null)
+        if (_logoReference == null || _logoReference.BoundingRect == Rectangle.Empty)
             return;
 
         var boundingPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.bounding.png");

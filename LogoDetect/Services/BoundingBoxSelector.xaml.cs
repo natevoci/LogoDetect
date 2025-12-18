@@ -44,6 +44,9 @@ public partial class BoundingBoxSelector : Window
         ImageCanvas.Width = bitmap.PixelWidth;
         ImageCanvas.Height = bitmap.PixelHeight;
         
+        // Size window based on image dimensions
+        SizeWindowToImage(bitmap.PixelWidth, bitmap.PixelHeight);
+        
         // Show initial bounds
         UpdateSelectionRectangle();
     }
@@ -296,12 +299,12 @@ public partial class BoundingBoxSelector : Window
         Close();
     }
 
-    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    private void NoLogoButton_Click(object sender, RoutedEventArgs e)
     {
         // Reset to full image
         _selectedBounds = new System.Drawing.Rectangle(0, 0, (int)ImageCanvas.Width, (int)ImageCanvas.Height);
-        UpdateSelectionRectangle();
-        UpdateStatusText();
+        DialogResult = false;
+        Close();
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -315,5 +318,33 @@ public partial class BoundingBoxSelector : Window
             DialogResult = false;
             Close();
         }
+    }
+
+    private void SizeWindowToImage(int imageWidth, int imageHeight)
+    {
+        // Get the screen's working area (excluding taskbar)
+        var workingArea = SystemParameters.WorkArea;
+        
+        // Reserve space for window chrome, controls, and padding
+        const double chromeHeight = 120; // Title bar + controls panel
+        const double chromeWidth = 20;   // Window borders
+        const double maxScreenPercentage = 0.9; // Use up to 90% of screen
+        
+        // Calculate maximum available space
+        var maxWidth = workingArea.Width * maxScreenPercentage;
+        var maxHeight = workingArea.Height * maxScreenPercentage - chromeHeight;
+        
+        // Calculate scale factor to fit image within available space
+        var scaleWidth = maxWidth / imageWidth;
+        var scaleHeight = maxHeight / imageHeight;
+        var scale = Math.Min(Math.Min(scaleWidth, scaleHeight), 1.0); // Don't scale up, only down
+        
+        // Set window size
+        Width = (imageWidth * scale) + chromeWidth;
+        Height = (imageHeight * scale) + chromeHeight;
+        
+        // Ensure minimum size
+        MinWidth = 400;
+        MinHeight = 300;
     }
 }
