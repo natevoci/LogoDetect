@@ -93,11 +93,11 @@ public class SceneChangeFrameProcessor : IFrameProcessor
         
         if (isBlack)
         {
-            _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "black"));
+            _sceneChanges.Add((current.TimeSpan, meanLuminance, "black"));
         }
         else if (isWhite)
         {
-            _sceneChanges.Add((current.TimeSpan, meanLuminance / 255.0, "white"));
+            _sceneChanges.Add((current.TimeSpan, meanLuminance, "white"));
         }
         else if (previous != null)
         {

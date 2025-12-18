@@ -61,7 +61,7 @@ Time,LogoDiff,MeanLuminance,IsBlackFrame,IsWhiteFrame,SceneChange
 
 - **Time**: HH:MM:SS.fff format
 - **LogoDiff**: Float value for logo detection confidence
-- **MeanLuminance**: Float value 0-255 for frame brightness
+- **MeanLuminance**: Float value 0-1 for frame brightness
 - **IsBlackFrame/IsWhiteFrame**: Boolean values
 - **SceneChange**: Float value for scene change intensity
 

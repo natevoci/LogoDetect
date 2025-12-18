@@ -460,7 +460,7 @@
                 if (blackData.length > 0) {
                     traces.push({
                         x: blackData.map(d => d.Time),
-                        y: blackData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        y: blackData.map(d => d.MeanLuminance), // Normalize to 0-1
                         type: 'scatter',
                         mode: 'markers',
                         name: 'Black Frames',
@@ -481,7 +481,7 @@
                 if (whiteData.length > 0) {
                     traces.push({
                         x: whiteData.map(d => d.Time),
-                        y: whiteData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        y: whiteData.map(d => d.MeanLuminance), // Normalize to 0-1
                         type: 'scatter',
                         mode: 'markers',
                         name: 'White Frames',
@@ -521,7 +521,7 @@
                 if (luminanceData.length > 0) {
                     traces.push({
                         x: luminanceData.map(d => d.Time),
-                        y: luminanceData.map(d => d.MeanLuminance / 255.0), // Normalize to 0-1
+                        y: luminanceData.map(d => d.MeanLuminance), // Normalize to 0-1
                         type: 'scatter',
                         mode: 'lines',
                         name: 'Mean Luminance',

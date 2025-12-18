@@ -18,9 +18,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
     private YData? _logoReference;
     private readonly List<LogoDetection> _logoDetections = new();
-    private readonly Queue<Matrix<float>> _rollingEdgeMaps = new();
+    private readonly Queue<MatrixRowMajor<float>> _rollingEdgeMaps = new();
     private readonly Queue<TimeSpan> _rollingEdgeTimeSpans = new();
-    private Matrix<float>? _sumMatrix;
+    private MatrixRowMajor<float>? _sumMatrix;
     private int _height;
     private int _width;
     private bool _initialized = false;
@@ -61,9 +61,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         _height = refFrame.YData.Height;
         _width = refFrame.YData.Width;
-        _sumMatrix = Matrix<float>.Build.Dense(_height, _width);
+        _sumMatrix = MatrixRowMajor<float>.BuildDense(_width, _height);
         // Pre-fill the rolling average with blank edge maps
-        var blankEdgeMap = Matrix<float>.Build.Dense(_height, _width, byte.MaxValue / 2.0f);
+        var blankEdgeMap = MatrixRowMajor<float>.BuildDense(_width, _height, YData.MAX_PIXEL_VALUE / 2.0f);
         for (int i = 0; i < MaxSecondsInRollingAverage; i++)
         {
             _rollingEdgeMaps.Enqueue(blankEdgeMap);
@@ -161,7 +161,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         var width = frame.YData.Width;
 
         // Create a hardware-accelerated matrix for accumulation
-        var referenceMatrix = Matrix<float>.Build.Dense(height, width);
+        var referenceMatrix = MatrixRowMajor<float>.BuildDense(width, height);
         var framesProcessed = 0;
 
         // Sample 250 frames evenly spaced from 10% to 70% of the video duration
@@ -226,7 +226,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             return;
 
         var matrix = _logoReference.MatrixData;
-        var baseValue = 127.0f;
+        var baseValue = 0.5f * YData.MAX_PIXEL_VALUE;
         var originalThreshold = 0.2f * baseValue; // Original threshold for deviation from base value
         var threshold = originalThreshold;
 
@@ -249,7 +249,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             {
                 for (int x = 0; x < _width; x++)
                 {
-                    var deviation = Math.Abs(matrix[y, x] - baseValue);
+                    var deviation = Math.Abs(matrix[x, y] - baseValue);
                     maxDeviation = Math.Max(maxDeviation, deviation);
 
                     if (deviation > threshold)
@@ -359,9 +359,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             if (x >= 0 && x < _width)
             {
                 if (_logoReference.BoundingRect.Top >= 0 && _logoReference.BoundingRect.Top < _height)
-                    visualMatrix[_logoReference.BoundingRect.Top, x] = 255.0f; // White line
+                    visualMatrix[x, _logoReference.BoundingRect.Top] = YData.MAX_PIXEL_VALUE; // White line
                 if (_logoReference.BoundingRect.Bottom - 1 >= 0 && _logoReference.BoundingRect.Bottom - 1 < _height)
-                    visualMatrix[_logoReference.BoundingRect.Bottom - 1, x] = 255.0f; // White line
+                    visualMatrix[x, _logoReference.BoundingRect.Bottom - 1] = YData.MAX_PIXEL_VALUE; // White line
             }
         }
 
@@ -371,9 +371,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             if (y >= 0 && y < _height)
             {
                 if (_logoReference.BoundingRect.Left >= 0 && _logoReference.BoundingRect.Left < _width)
-                    visualMatrix[y, _logoReference.BoundingRect.Left] = 255.0f; // White line
+                    visualMatrix[_logoReference.BoundingRect.Left, y] = YData.MAX_PIXEL_VALUE; // White line
                 if (_logoReference.BoundingRect.Right - 1 >= 0 && _logoReference.BoundingRect.Right - 1 < _width)
-                    visualMatrix[y, _logoReference.BoundingRect.Right - 1] = 255.0f; // White line
+                    visualMatrix[_logoReference.BoundingRect.Right - 1, y] = YData.MAX_PIXEL_VALUE; // White line
             }
         }
 

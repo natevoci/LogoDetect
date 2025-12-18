@@ -59,7 +59,7 @@ public class InstrumentedImageProcessor : IImageProcessor
     }
 
     // Delegate other methods if needed
-    public float CompareEdgeData(MathNet.Numerics.LinearAlgebra.Matrix<float> reference, MathNet.Numerics.LinearAlgebra.Matrix<float> current, System.Drawing.Rectangle boundingRect)
+    public float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current, System.Drawing.Rectangle boundingRect)
     {
         return _performanceTracker.MeasureMethod(
             "ImageProcessor.CompareEdgeData",
@@ -68,7 +68,7 @@ public class InstrumentedImageProcessor : IImageProcessor
         );
     }
 
-    public float CompareEdgeData(MathNet.Numerics.LinearAlgebra.Matrix<float> reference, MathNet.Numerics.LinearAlgebra.Matrix<float> current)
+    public float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current)
     {
         return _performanceTracker.MeasureMethod(
             "ImageProcessor.CompareEdgeData",

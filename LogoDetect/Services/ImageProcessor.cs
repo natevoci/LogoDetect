@@ -48,13 +48,13 @@ public class ImageProcessor : IImageProcessor
         var yData = input.MatrixData;
 
         // Create padded matrix with zeros around the edges to handle boundaries
-        var padded = Matrix<float>.Build.Dense(yData.RowCount + (distance * 2), yData.ColumnCount + (distance * 2));
+        var padded = MatrixRowMajor<float>.BuildDense(yData.Width + (distance * 2), yData.Height + (distance * 2));
         padded.SetSubMatrix(distance, distance, yData);
 
         // Create shifted matrices for gradient calculation (these operations run on GPU when available)
-        var rightShift = padded.SubMatrix(distance, yData.RowCount, distance * 2, yData.ColumnCount);
-        var downShift = padded.SubMatrix(distance * 2, yData.RowCount, distance, yData.ColumnCount);
-        var centerRegion = padded.SubMatrix(distance, yData.RowCount, distance, yData.ColumnCount);
+        var rightShift = padded.SubMatrix(distance, yData.Width, distance * 2, yData.Height);
+        var downShift = padded.SubMatrix(distance * 2, yData.Width, distance, yData.Height);
+        var centerRegion = padded.SubMatrix(distance, yData.Width, distance, yData.Height);
 
 
         // Calculate X gradient using hardware acceleration
@@ -66,13 +66,13 @@ public class ImageProcessor : IImageProcessor
         var output = dx.Add(dy);
 
         // Clear margin pixels around the edges
-        var rowVector = Vector<float>.Build.Dense(output.ColumnCount, 0.0f);
-        var colVector = Vector<float>.Build.Dense(output.RowCount, 0.0f);
-        foreach (var rowIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.RowCount - edgeMargin, edgeMargin)))
+        var rowVector = Vector<float>.Build.Dense(output.Width, 0.0f);
+        var colVector = Vector<float>.Build.Dense(output.Height, 0.0f);
+        foreach (var rowIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.Height - edgeMargin, edgeMargin)))
         {
             output.SetRow(rowIndex, rowVector);
         }
-        foreach (var colIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.ColumnCount - edgeMargin, edgeMargin)))
+        foreach (var colIndex in Enumerable.Range(0, edgeMargin).Concat(Enumerable.Range(output.Width - edgeMargin, edgeMargin)))
         {
             output.SetColumn(colIndex, colVector);
         }
@@ -82,11 +82,11 @@ public class ImageProcessor : IImageProcessor
         //     .Divide(2.0f)
         //     .Multiply(4.0f);
 
-        // Restrict the output values to be in the 0-255 range
+        // Restrict the output values to be in the 0-1 range
         var result = output
-            .Add(byte.MaxValue / 2.0f);
-            // .PointwiseMaximum(byte.MinValue)
-            // .PointwiseMinimum(byte.MaxValue);
+            .Add(YData.MAX_PIXEL_VALUE / 2.0f);
+            // .PointwiseMaximum(0f)
+            // .PointwiseMinimum(YData.MAX_PIXEL_VALUE);
 
         // YData.SaveBitmapToFile(padded, "D:\\temp\\logo\\padded.png");
         // YData.SaveBitmapToFile(rightShift, "D:\\temp\\logo\\right.png");
@@ -116,14 +116,14 @@ public class ImageProcessor : IImageProcessor
         var diffSum = diffAbs.ColumnSums().Sum();
         var totalPixels = prevData.Width * prevData.Height;
 
-        return diffSum / (totalPixels * 255.0);
+        return diffSum / totalPixels;
     }
 
-    public float CompareEdgeData(Matrix<float> reference, Matrix<float> current)
+    public float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current)
     {
         // Move matrix values to a zero centered range
-        reference = reference.Subtract(byte.MaxValue / 2.0f);
-        current = current.Subtract(byte.MaxValue / 2.0f);
+        reference = reference.Subtract(YData.MAX_PIXEL_VALUE / 2.0f);
+        current = current.Subtract(YData.MAX_PIXEL_VALUE / 2.0f);
 
         var currentSignal = reference.PointwiseMultiply(current).PointwiseAbs().Enumerate().Sum();
         var maxSignal = reference.PointwiseMultiply(reference).PointwiseAbs().Enumerate().Sum();
@@ -131,24 +131,24 @@ public class ImageProcessor : IImageProcessor
         return currentSignal / maxSignal;
     }
 
-    public float CompareEdgeData(Matrix<float> reference, Matrix<float> current, Rectangle boundingRect)
+    public float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current, Rectangle boundingRect)
     {
         // Extract submatrices based on the bounding rectangle
         var refSubMatrix = reference.SubMatrix(
-            boundingRect.Top, 
-            boundingRect.Height, 
-            boundingRect.Left, 
-            boundingRect.Width);
+            boundingRect.Left,
+            boundingRect.Width,
+            boundingRect.Top,
+            boundingRect.Height);
         
         var currentSubMatrix = current.SubMatrix(
-            boundingRect.Top, 
-            boundingRect.Height, 
-            boundingRect.Left, 
-            boundingRect.Width);
+            boundingRect.Left,
+            boundingRect.Width,
+            boundingRect.Top,
+            boundingRect.Height);
 
         // Move matrix values to a zero centered range
-        refSubMatrix = refSubMatrix.Subtract(byte.MaxValue / 2.0f);
-        currentSubMatrix = currentSubMatrix.Subtract(byte.MaxValue / 2.0f);
+        refSubMatrix = refSubMatrix.Subtract(YData.MAX_PIXEL_VALUE / 2.0f);
+        currentSubMatrix = currentSubMatrix.Subtract(YData.MAX_PIXEL_VALUE / 2.0f);
 
         var currentSignal = refSubMatrix.PointwiseMultiply(currentSubMatrix).PointwiseAbs().Enumerate().Sum();
         var maxSignal = refSubMatrix.PointwiseMultiply(refSubMatrix).PointwiseAbs().Enumerate().Sum();
@@ -164,11 +164,11 @@ public class ImageProcessor : IImageProcessor
         var totalPixels = data.Width * data.Height;
         var meanLuminance = matrixSum / totalPixels;
 
-        // Calculate percentage of pixels that are very dark (below threshold * 255)
-        var darkPixelThreshold = (float)(threshold * 255.0);
+        // Calculate percentage of pixels that are very dark (below threshold)
+        var darkPixelThreshold = (float)(threshold * YData.MAX_PIXEL_VALUE);
         
         // Use accelerated pointwise comparison instead of Enumerate().Count()
-        var darkPixelMatrix = data.MatrixData.Map(x => x < darkPixelThreshold ? 1.0f : 0.0f);
+        var darkPixelMatrix = data.MatrixData.Map(pixel => pixel < darkPixelThreshold ? 1.0f : 0.0f);
         var darkPixelCount = darkPixelMatrix.ColumnSums().Sum();
         var darkPixelPercentage = darkPixelCount / totalPixels;
 
@@ -178,17 +178,17 @@ public class ImageProcessor : IImageProcessor
 
     public bool IsWhiteFrame(YData data, double threshold)
     {
-        // Calculate average luminance - closer to 255 means brighter
+        // Calculate average luminance - closer to YData.MAX_PIXEL_VALUE means brighter
         // Use accelerated sum calculation instead of Enumerate().Average()
         var matrixSum = data.MatrixData.ColumnSums().Sum();
         var totalPixels = data.Width * data.Height;
         var meanLuminance = matrixSum / totalPixels;
 
-        // Calculate percentage of pixels that are very bright (above (1-threshold) * 255)
-        var brightPixelThreshold = (float)((1.0 - threshold) * 255.0);
+        // Calculate percentage of pixels that are very bright (above (1-threshold))
+        var brightPixelThreshold = (float)((1.0 - threshold) * YData.MAX_PIXEL_VALUE);
         
         // Use accelerated pointwise comparison instead of Enumerate().Count()
-        var brightPixelMatrix = data.MatrixData.Map(x => x > brightPixelThreshold ? 1.0f : 0.0f);
+        var brightPixelMatrix = data.MatrixData.Map(pixel => pixel > brightPixelThreshold ? 1.0f : 0.0f);
         var brightPixelCount = brightPixelMatrix.ColumnSums().Sum();
         var brightPixelPercentage = brightPixelCount / totalPixels;
 
@@ -202,8 +202,8 @@ public class ImageProcessor : IImageProcessor
         var matrix = data.MatrixData;
         var totalPixels = data.Width * data.Height;
         
-        var darkPixelThreshold = (float)(threshold * 255.0);
-        var brightPixelThreshold = (float)((1.0 - threshold) * 255.0);
+        var darkPixelThreshold = (float)(threshold * YData.MAX_PIXEL_VALUE);
+        var brightPixelThreshold = (float)((1.0 - threshold) * YData.MAX_PIXEL_VALUE);
 
         try
         {
@@ -251,8 +251,8 @@ public class ImageProcessor : IImageProcessor
         var floatData = data.FloatData;
         var totalPixels = data.Width * data.Height;
 
-        var darkPixelThreshold = (float)(threshold * 255.0);
-        var brightPixelThreshold = (float)((1.0 - threshold) * 255.0);
+        var darkPixelThreshold = (float)(threshold * YData.MAX_PIXEL_VALUE);
+        var brightPixelThreshold = (float)((1.0 - threshold) * YData.MAX_PIXEL_VALUE);
 
         // Hardware-accelerated calculations using SIMD
         float meanLuminance = 0.0f;

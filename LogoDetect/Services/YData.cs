@@ -9,13 +9,15 @@ namespace LogoDetect.Services;
 
 public class YData
 {
-    private readonly Matrix<float> _matrixData;
+    public const float MAX_PIXEL_VALUE = 1.0f;
+
+    private readonly MatrixRowMajor<float> _matrixData;
     private readonly float[] _floatData;
     private readonly int _width;
     private readonly int _height;
     private Rectangle _boundingRect;
 
-    public Matrix<float> MatrixData => _matrixData;
+    public MatrixRowMajor<float> MatrixData => _matrixData;
     public float[] FloatData => _floatData;
     public int Width => _width;
     public int Height => _height;
@@ -26,46 +28,28 @@ public class YData
         set => _boundingRect = value;
     }
 
-    public YData(byte[] rawData, int width, int height) : this(rawData, width, height, width)
-    {
-    }
-
-    public YData(byte[] rawData, int width, int height, int linesize)
+    public YData(float[] floatData, int width, int height, int stride)
     {
         _width = width;
         _height = height;
+        _floatData = floatData;
 
-        // Create matrix with proper dimensions (height x width)
-        // Use unsafe bulk operations for maximum performance
-        _floatData = new float[height * width];
-
-        unsafe
+        _matrixData = MatrixRowMajor<float>.BuildDense(stride, height, floatData);
+        
+        if (stride > width)
         {
-            fixed (byte* sourcePtr = rawData)
-            fixed (float* destPtr = _floatData)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        destPtr[x * height + y] = sourcePtr[y * linesize + x];
-                    }
-                }
-            }
+            _matrixData = _matrixData.SubMatrix(0, width, 0, height);
         }
-
-        // Create matrix from the float array without additional copying
-        _matrixData = Matrix<float>.Build.Dense(height, width, _floatData);
     }
 
-    public YData(Matrix<float> matrix)
+    public YData(MatrixRowMajor<float> matrix)
     {
-        _width = matrix.ColumnCount;
-        _height = matrix.RowCount;
+        _width = matrix.Width;
+        _height = matrix.Height;
         _matrixData = matrix;
         
         // Extract float data from matrix
-        _floatData = matrix.ToColumnMajorArray();
+        _floatData = matrix.ToRowMajorArray();
     }
 
     public SKBitmap ToBitmap()
@@ -74,11 +58,11 @@ public class YData
         var bytes = new byte[_width * _height];
 
         // Convert float matrix back to bytes
-        for (int i = 0; i < _height; i++)
+        for (int y = 0; y < _height; y++)
         {
-            for (int j = 0; j < _width; j++)
+            for (int x = 0; x < _width; x++)
             {
-                bytes[i * _width + j] = (byte)Math.Clamp(_matrixData[i, j], 0, 255);
+                bytes[y * _width + x] = (byte)Math.Clamp(_matrixData[x, y] * 255.0f, 0, 255);
             }
         }
 
@@ -92,31 +76,13 @@ public class YData
         return bitmap;
     }
 
-    public static YData FromBitmap(SKBitmap bitmap)
-    {
-        if (bitmap.ColorType != SKColorType.Gray8)
-        {
-            // Convert bitmap to Gray8 format if necessary
-            using var grayBitmap = bitmap.Resize(new SKImageInfo(bitmap.Width, bitmap.Height, SKColorType.Gray8), SKFilterQuality.High);
-            var data = new byte[grayBitmap.Width * grayBitmap.Height];
-            Marshal.Copy(grayBitmap.GetPixels(), data, 0, data.Length);
-            return new YData(data, grayBitmap.Width, grayBitmap.Height);
-        }
-        else
-        {
-            var data = new byte[bitmap.Width * bitmap.Height];
-            Marshal.Copy(bitmap.GetPixels(), data, 0, data.Length);
-            return new YData(data, bitmap.Width, bitmap.Height);
-        }
-    }
-
-    public static void SaveBitmapToFile(Matrix<float> matrix, string path)
+    public static void SaveBitmapToFile(MatrixRowMajor<float> matrix, string path)
     {
         var yData = new YData(matrix);
         yData.SaveBitmapToFile(path);
     }
 
-    public static void SaveBitmapToFile(Matrix<float> matrix, string path, Action<string>? debugFileTracker = null)
+    public static void SaveBitmapToFile(MatrixRowMajor<float> matrix, string path, Action<string>? debugFileTracker = null)
     {
         var yData = new YData(matrix);
         yData.SaveBitmapToFile(path);
@@ -147,12 +113,6 @@ public class YData
         data.SaveTo(stream);
     }
 
-    public static YData LoadFromFile(string path)
-    {
-        using var bitmap = SKBitmap.Decode(path);
-        return FromBitmap(bitmap);
-    }
-
     public void SaveToCSV(string path)
     {
         SaveToCSV(path, null);
@@ -162,12 +122,12 @@ public class YData
     {
         using var writer = new StreamWriter(path);
         writer.WriteLine($"{_height},{_width}");
-        for (int i = 0; i < _height; i++)
+        for (int y = 0; y < _height; y++)
         {
             var row = new string[_width];
-            for (int j = 0; j < _width; j++)
+            for (int x = 0; x < _width; x++)
             {
-                row[j] = _matrixData[i, j].ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+                row[x] = (_matrixData[x, y] * 255.0f).ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
             }
             writer.WriteLine(string.Join(",", row));
         }
@@ -188,27 +148,27 @@ public class YData
         {
             throw new FormatException("Invalid CSV format: First line should contain height,width");
         }
-        var matrix = Matrix<float>.Build.Dense(height, width);
-        for (int i = 0; i < height; i++)
+        var matrix = MatrixRowMajor<float>.BuildDense(width, height);
+        for (int y = 0; y < height; y++)
         {
             var line = reader.ReadLine();
             if (string.IsNullOrEmpty(line))
             {
-                throw new FormatException($"Invalid CSV format: Missing data at row {i}");
+                throw new FormatException($"Invalid CSV format: Missing data at row {y}");
             }
             var values = line.Split(',');
             if (values.Length != width)
             {
-                throw new FormatException($"Invalid CSV format: Row {i} has {values.Length} values, expected {width}");
+                throw new FormatException($"Invalid CSV format: Row {y} has {values.Length} values, expected {width}");
             }
-            for (int j = 0; j < width; j++)
+            for (int x = 0; x < width; x++)
             {
-                if (!float.TryParse(values[j], System.Globalization.NumberStyles.Float,
+                if (!float.TryParse(values[x], System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out float value))
                 {
-                    throw new FormatException($"Invalid CSV format: Could not parse value at row {i}, column {j}");
+                    throw new FormatException($"Invalid CSV format: Could not parse value at row {y}, column {x}");
                 }
-                matrix[i, j] = value;
+                matrix[x, y] = value / 255.0f;
             }
         }
         var yData = new YData(matrix);

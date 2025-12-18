@@ -39,7 +39,7 @@ public interface IImageProcessor
     /// <param name="reference">Reference edge data</param>
     /// <param name="current">Current frame edge data</param>
     /// <returns>Comparison score</returns>
-    float CompareEdgeData(Matrix<float> reference, Matrix<float> current);
+    float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current);
 
     /// <summary>
     /// Compares edge data within a specific bounding rectangle for logo detection
@@ -48,7 +48,7 @@ public interface IImageProcessor
     /// <param name="current">Current frame edge data</param>
     /// <param name="boundingRect">Region to compare within</param>
     /// <returns>Comparison score</returns>
-    float CompareEdgeData(Matrix<float> reference, Matrix<float> current, Rectangle boundingRect);
+    float CompareEdgeData(MatrixRowMajor<float> reference, MatrixRowMajor<float> current, Rectangle boundingRect);
 
     /// <summary>
     /// Detects if a frame is predominantly black
