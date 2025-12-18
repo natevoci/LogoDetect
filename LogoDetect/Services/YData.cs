@@ -2,6 +2,7 @@ using SkiaSharp;
 using System.Runtime.InteropServices;
 using System.Numerics;
 using MathNet.Numerics.LinearAlgebra;
+using System.Drawing;
 using System.IO;
 
 namespace LogoDetect.Services;
@@ -12,11 +13,18 @@ public class YData
     private readonly float[] _floatData;
     private readonly int _width;
     private readonly int _height;
+    private Rectangle _boundingRect;
 
     public Matrix<float> MatrixData => _matrixData;
     public float[] FloatData => _floatData;
     public int Width => _width;
     public int Height => _height;
+
+    public Rectangle BoundingRect
+    {
+        get => _boundingRect;
+        set => _boundingRect = value;
+    }
 
     public YData(byte[] rawData, int width, int height) : this(rawData, width, height, width)
     {
@@ -140,21 +148,7 @@ public class YData
 
     public void SaveToCSV(string path)
     {
-        using var writer = new StreamWriter(path);
-
-        // Write header with dimensions
-        writer.WriteLine($"{_height},{_width}");
-
-        // Write matrix data row by row
-        for (int i = 0; i < _height; i++)
-        {
-            var row = new string[_width];
-            for (int j = 0; j < _width; j++)
-            {
-                row[j] = _matrixData[i, j].ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
-            }
-            writer.WriteLine(string.Join(",", row));
-        }
+        SaveToCSV(path, null);
     }
 
     public void SaveToCSV(string path, Action<string>? debugFileTracker = null)
@@ -169,6 +163,10 @@ public class YData
                 row[j] = _matrixData[i, j].ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
             }
             writer.WriteLine(string.Join(",", row));
+        }
+        if (_boundingRect != Rectangle.Empty)
+        {
+            writer.WriteLine($"BoundingRect,{_boundingRect.X},{_boundingRect.Y},{_boundingRect.Width},{_boundingRect.Height}");
         }
         debugFileTracker?.Invoke(path);
     }
@@ -206,7 +204,23 @@ public class YData
                 matrix[i, j] = value;
             }
         }
-        return new YData(matrix);
+        var yData = new YData(matrix);
+        
+        var extraLine = reader.ReadLine();
+        if (!string.IsNullOrEmpty(extraLine))
+        {
+            var parts = extraLine.Split(',');
+            if (parts.Length == 5 && parts[0] == "BoundingRect" &&
+                int.TryParse(parts[1], out int x) &&
+                int.TryParse(parts[2], out int y) &&
+                int.TryParse(parts[3], out int w) &&
+                int.TryParse(parts[4], out int h))
+            {
+                yData.BoundingRect = new Rectangle(x, y, w, h);
+            }
+        }
+
+        return yData;
     }
     
 

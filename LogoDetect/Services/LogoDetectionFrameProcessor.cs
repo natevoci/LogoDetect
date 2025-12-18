@@ -16,7 +16,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private readonly IImageProcessor _imageProcessor;
 
     private YData? _logoReference;
-    private Rectangle _logoBoundingRect;
     private readonly List<LogoDetection> _logoDetections = new();
     private readonly Queue<Matrix<float>> _rollingEdgeMaps = new();
     private readonly Queue<TimeSpan> _rollingEdgeTimeSpans = new();
@@ -72,7 +71,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
 
         GenerateLogoReference(progress);
-        AnalyzeLogoBoundingRect();
 
         _initialized = true;
     }
@@ -99,7 +97,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             _sumMatrix = _sumMatrix.Subtract(oldestMatrix);
         }
         var averageEdgeMap = _sumMatrix.Divide(_rollingEdgeMaps.Count);
-        var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap, _logoBoundingRect);
+        var logoDiff = _imageProcessor.CompareEdgeData(_logoReference.MatrixData, averageEdgeMap, _logoReference.BoundingRect);
         var logoTimeSpan = current.TimeSpan.Subtract(TimeSpan.FromSeconds(MaxSecondsInRollingAverage / 2.0));
         if (logoTimeSpan >= TimeSpan.Zero)
         {
@@ -141,11 +139,15 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private void GenerateLogoReference(IProgressMsg? progress = null)
     {
         var logoPath = _settings.GetOutputFileWithExtension(".logo.png");
-        var csvFilePath = _settings.GetOutputFileWithExtension(".logo.csv");
-        if (File.Exists(csvFilePath) && !_settings.forceReload)
+        // var csvFilePath = _settings.GetOutputFileWithExtension(".logo.csv");
+        var logoReferenceFilePath = Path.Join(_settings.outputPath, "logo_reference.csv");
+        if (File.Exists(logoReferenceFilePath) && !_settings.forceReload)
         {
-            _logoReference = YData.LoadFromCSV(csvFilePath);
-            _debugFileTracker?.Invoke(csvFilePath);
+            _logoReference = YData.LoadFromCSV(logoReferenceFilePath);
+            if (_logoReference.BoundingRect == Rectangle.Empty)
+            {
+                AnalyzeLogoBoundingRect();
+            }
             return;
         }
 
@@ -207,9 +209,12 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         _logoReference.SaveBitmapToFile(logoPath);
         _debugFileTracker?.Invoke(logoPath);
 
+        // Populate the bounding rectangle of the _logoReference
+        AnalyzeLogoBoundingRect();
+
         // Create logo CSV file
-        _logoReference.SaveToCSV(csvFilePath);
-        _debugFileTracker?.Invoke(csvFilePath);
+        _logoReference.SaveToCSV(logoReferenceFilePath);
+        _debugFileTracker?.Invoke(logoReferenceFilePath);
     }
 
     private void AnalyzeLogoBoundingRect()
@@ -289,7 +294,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         {
             // Add some padding to the bounding rectangle
             var padding = 10;
-            _logoBoundingRect = new Rectangle(
+            _logoReference.BoundingRect = new Rectangle(
                 Math.Max(0, minX - padding),
                 Math.Max(0, minY - padding),
                 Math.Min(_width - 1, maxX + padding) - Math.Max(0, minX - padding),
@@ -299,8 +304,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         else
         {
             // If no logo found, use the entire frame
-            _logoBoundingRect = new Rectangle(0, 0, _width, _height);
+            _logoReference.BoundingRect = new Rectangle(0, 0, _width, _height);
         }
+
         SaveLogoBoundingVisualization();
     }
 
@@ -316,26 +322,26 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         // Draw the bounding rectangle on the visualization
         // Top and bottom horizontal lines
-        for (int x = _logoBoundingRect.Left; x < _logoBoundingRect.Right; x++)
+        for (int x = _logoReference.BoundingRect.Left; x < _logoReference.BoundingRect.Right; x++)
         {
             if (x >= 0 && x < _width)
             {
-                if (_logoBoundingRect.Top >= 0 && _logoBoundingRect.Top < _height)
-                    visualMatrix[_logoBoundingRect.Top, x] = 255.0f; // White line
-                if (_logoBoundingRect.Bottom - 1 >= 0 && _logoBoundingRect.Bottom - 1 < _height)
-                    visualMatrix[_logoBoundingRect.Bottom - 1, x] = 255.0f; // White line
+                if (_logoReference.BoundingRect.Top >= 0 && _logoReference.BoundingRect.Top < _height)
+                    visualMatrix[_logoReference.BoundingRect.Top, x] = 255.0f; // White line
+                if (_logoReference.BoundingRect.Bottom - 1 >= 0 && _logoReference.BoundingRect.Bottom - 1 < _height)
+                    visualMatrix[_logoReference.BoundingRect.Bottom - 1, x] = 255.0f; // White line
             }
         }
 
         // Left and right vertical lines
-        for (int y = _logoBoundingRect.Top; y < _logoBoundingRect.Bottom; y++)
+        for (int y = _logoReference.BoundingRect.Top; y < _logoReference.BoundingRect.Bottom; y++)
         {
             if (y >= 0 && y < _height)
             {
-                if (_logoBoundingRect.Left >= 0 && _logoBoundingRect.Left < _width)
-                    visualMatrix[y, _logoBoundingRect.Left] = 255.0f; // White line
-                if (_logoBoundingRect.Right - 1 >= 0 && _logoBoundingRect.Right - 1 < _width)
-                    visualMatrix[y, _logoBoundingRect.Right - 1] = 255.0f; // White line
+                if (_logoReference.BoundingRect.Left >= 0 && _logoReference.BoundingRect.Left < _width)
+                    visualMatrix[y, _logoReference.BoundingRect.Left] = 255.0f; // White line
+                if (_logoReference.BoundingRect.Right - 1 >= 0 && _logoReference.BoundingRect.Right - 1 < _width)
+                    visualMatrix[y, _logoReference.BoundingRect.Right - 1] = 255.0f; // White line
             }
         }
 

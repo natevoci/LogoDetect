@@ -198,12 +198,21 @@ public class VideoProcessor : IDisposable
         // Delete debug files if not keeping them
         if (!_settings.keepDebugFiles)
         {
+            Console.WriteLine("Deleting debug files...");
             foreach (var file in _debugFiles)
             {
                 if (!string.Equals(file, fullOutputPath, StringComparison.OrdinalIgnoreCase) && File.Exists(file))
                 {
                     try { File.Delete(file); } catch { }
                 }
+            }
+        }
+        else
+        {
+            Console.WriteLine("Debug files retained:");
+            foreach (var file in _debugFiles)
+            {
+                Console.WriteLine($" - {file}");
             }
         }
     }
