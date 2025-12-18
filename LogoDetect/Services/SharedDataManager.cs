@@ -9,7 +9,7 @@ namespace LogoDetect.Services;
 public class SharedDataManager
 {
     private readonly VideoProcessorSettings _settings;
-    private readonly List<CombinedFrameData> _frameData = new();
+    private readonly Dictionary<TimeSpan, CombinedFrameData> _frameData = new();
     private Action<string>? _debugFileTracker;
 
     public SharedDataManager(VideoProcessorSettings settings)
@@ -46,14 +46,13 @@ public class SharedDataManager
 
     private CombinedFrameData GetOrCreateFrameData(TimeSpan time)
     {
-        var existing = _frameData.FirstOrDefault(f => f.Time == time);
-        if (existing != null)
+        if (_frameData.TryGetValue(time, out var existing))
         {
             return existing;
         }
 
         var newData = new CombinedFrameData { Time = time };
-        _frameData.Add(newData);
+        _frameData[time] = newData;
         return newData;
     }
 
@@ -82,7 +81,7 @@ public class SharedDataManager
                 writer.WriteLine("Time,LogoDiff,MeanLuminance,IsBlackFrame,IsWhiteFrame,SceneChange");
                 
                 // Write data sorted by time
-                foreach (var data in _frameData.OrderBy(f => f.Time))
+                foreach (var data in _frameData.Values.OrderBy(f => f.Time))
                 {
                     writer.WriteLine($"{data.Time:hh\\:mm\\:ss\\.fff},{data.LogoDiff:F6},{data.MeanLuminance:F2},{data.IsBlackFrame},{data.IsWhiteFrame},{data.SceneChange:F6}");
                 }
