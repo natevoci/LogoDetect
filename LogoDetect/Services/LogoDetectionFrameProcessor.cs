@@ -140,7 +140,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private void GenerateLogoReference(IProgressMsg? progress = null)
     {
         var logoPath = _settings.GetOutputFileWithExtension(".logo.png");
-        // var csvFilePath = _settings.GetOutputFileWithExtension(".logo.csv");
         var logoReferenceFilePath = Path.Join(_settings.outputPath, "logo_reference.csv");
         if (File.Exists(logoReferenceFilePath) && !_settings.forceReload)
         {
@@ -207,8 +206,8 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         _logoReference = new YData(referenceMatrix);
 
         // Convert _logoReference to a bitmap and save to logoPath
-        _logoReference.SaveBitmapToFile(logoPath);
-        _debugFileTracker?.Invoke(logoPath);
+        // _logoReference.SaveBitmapToFile(logoPath);
+        // _debugFileTracker?.Invoke(logoPath);
 
         // Populate the bounding rectangle of the _logoReference
         AnalyzeLogoBoundingRect();
@@ -216,6 +215,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         // Create logo CSV file
         _logoReference.SaveToCSV(logoReferenceFilePath);
         _debugFileTracker?.Invoke(logoReferenceFilePath);
+
+        var logoReferencePngPath = Path.ChangeExtension(logoReferenceFilePath, ".png");
+        SaveLogoBoundingVisualization(logoReferencePngPath);
     }
 
     private void AnalyzeLogoBoundingRect()
@@ -312,8 +314,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
 
         // Interactively confirm bounding rectangle with user
         ShowBoundingBoxSelector();
-
-        SaveLogoBoundingVisualization();
     }
 
     private void ShowBoundingBoxSelector()
@@ -342,12 +342,12 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
     }
 
-    private void SaveLogoBoundingVisualization()
+    private void SaveLogoBoundingVisualization(string? logoPngPath = null)
     {
         if (_logoReference == null || _logoReference.BoundingRect == Rectangle.Empty)
             return;
 
-        var boundingPath = Path.ChangeExtension(_mediaFile.FilePath, ".logo.bounding.png");
+        var boundingPath = logoPngPath ?? Path.ChangeExtension(_mediaFile.FilePath, ".logo.bounding.png");
 
         // Create a copy of the logo reference for visualization
         var visualMatrix = _logoReference.MatrixData.Clone();
