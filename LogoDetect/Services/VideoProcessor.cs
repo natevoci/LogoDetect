@@ -103,21 +103,37 @@ public class VideoProcessor : IDisposable
             ], new Progress())
         );
 
-        // Save the combined plot and CSV after all processors are complete
-        sharedPlotManager.SaveCombinedGraph();
-        sharedDataManager.SaveCombinedCsv();
-
         double threshold = 1.0f;
 
         if (_settings.logoThreshold.HasValue)
         {
             threshold = _settings.logoThreshold.Value;
         }
-        else if (logoDetectionProcessor.LogoReference != null && logoDetectionProcessor.LogoReference.Threshold.HasValue)
+        else if (logoDetectionProcessor.LogoReference != null)
         {
-            threshold = logoDetectionProcessor.LogoReference.Threshold.Value;
-            // TODO: Interactively confirm logo threshold with user
+            threshold = logoDetectionProcessor.LogoReference.Threshold ?? 1.0f;
+            
+            // Interactively confirm logo threshold with user on STA thread
+            var staThread = new System.Threading.Thread(() =>
+            {
+                var plot = sharedPlotManager.GetSharedPlot();
+                var selector = new ThresholdSelector(plot, threshold);
+                if (selector.ShowDialog() == true && selector.WasConfirmed)
+                {
+                    threshold = selector.Threshold;
+                    logoDetectionProcessor.LogoReference.Threshold = threshold;
+                    logoDetectionProcessor.SaveLogoReference();
+                    Console.WriteLine($"Logo threshold updated to: {threshold:F2}");
+                }
+            });
+            staThread.SetApartmentState(System.Threading.ApartmentState.STA);
+            staThread.Start();
+            staThread.Join();
         }
+
+        // Save the combined plot and CSV after all processors are complete
+        sharedPlotManager.SaveCombinedGraph();
+        sharedDataManager.SaveCombinedCsv();
 
         stopwatch.Stop();
         Console.WriteLine($"\nFrames processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");

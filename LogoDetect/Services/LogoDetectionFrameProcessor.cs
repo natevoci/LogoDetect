@@ -422,18 +422,6 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             line.LegendText = $"Logo Differences ({method})";
             line.Axes.YAxis = plot.Axes.Right;
 
-            // Add horizontal threshold line
-            var threshold = _settings.logoThreshold ??_logoReference?.Threshold;
-            if (threshold.HasValue)
-            {
-                var thresholdLine = plot.Add.HorizontalLine(threshold.Value);
-                thresholdLine.Color = Colors.Red;
-                thresholdLine.LinePattern = ScottPlot.LinePattern.Dashed;
-                thresholdLine.LineWidth = 2;
-                thresholdLine.LegendText = "Logo Threshold";
-                thresholdLine.Axes.YAxis = plot.Axes.Right;
-            }
-
             // Configure right Y-axis range based on the data
             // var maxDiff = logoDetections.Max(d => (double)d.LogoDiff);
             // var minDiff = logoDetections.Min(d => (double)d.LogoDiff);
