@@ -326,6 +326,8 @@
                 } catch (error) {
                     showError('Error parsing CSV file: ' + error.message);
                 }
+                // Reset the input so selecting the same file again will trigger the change event
+                event.target.value = '';
             };
             reader.readAsText(file);
         }
@@ -517,7 +519,7 @@
 
             // Mean Luminance (left Y-axis) - only for frames that aren't black/white
             if (document.getElementById('showLuminance').checked) {
-                const luminanceData = csvData.filter(d => !d.IsBlackFrame && !d.IsWhiteFrame && d.MeanLuminance > 0);
+                const luminanceData = csvData;
                 if (luminanceData.length > 0) {
                     traces.push({
                         x: luminanceData.map(d => d.Time),
