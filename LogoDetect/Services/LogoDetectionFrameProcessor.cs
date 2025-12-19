@@ -16,6 +16,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private readonly MediaFile _mediaFile;
     private readonly IImageProcessor _imageProcessor;
 
+    private string? _logoReferenceFilePath;
     private YData? _logoReference;
     private readonly List<LogoDetection> _logoDetections = new();
     private readonly Queue<MatrixRowMajor<float>> _rollingEdgeMaps = new();
@@ -29,6 +30,8 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
     private SharedPlotManager? _sharedPlotManager;
     private SharedDataManager? _sharedDataManager;
 
+    public YData? LogoReference => _logoReference;
+
     public IReadOnlyList<LogoDetection> Detections => _logoDetections;
 
     public LogoDetectionFrameProcessor(VideoProcessorSettings settings, MediaFile mediaFile, IImageProcessor imageProcessor)
@@ -36,6 +39,7 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         _settings = settings;
         _mediaFile = mediaFile;
         _imageProcessor = imageProcessor;
+        _logoReferenceFilePath = Path.Join(_settings.outputPath, "logo_reference.csv");
     }
 
     public void SetDebugFileTracker(Action<string> tracker)
@@ -137,13 +141,20 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         }
     }
 
+    public void SaveLogoReference()
+    {
+        if (_logoReference == null)
+            return;
+
+        _logoReference.SaveToCSV(_logoReferenceFilePath!);
+    }
+
     private void GenerateLogoReference(IProgressMsg? progress = null)
     {
         var logoPath = _settings.GetOutputFileWithExtension(".logo.png");
-        var logoReferenceFilePath = Path.Join(_settings.outputPath, "logo_reference.csv");
-        if (File.Exists(logoReferenceFilePath) && !_settings.forceReload)
+        if (File.Exists(_logoReferenceFilePath) && !_settings.forceReload)
         {
-            _logoReference = YData.LoadFromCSV(logoReferenceFilePath);
+            _logoReference = YData.LoadFromCSV(_logoReferenceFilePath);
             if (_logoReference.BoundingRect == Rectangle.Empty)
             {
                 AnalyzeLogoBoundingRect();
@@ -213,10 +224,9 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
         AnalyzeLogoBoundingRect();
 
         // Create logo CSV file
-        _logoReference.SaveToCSV(logoReferenceFilePath);
-        _debugFileTracker?.Invoke(logoReferenceFilePath);
+        SaveLogoReference();
 
-        var logoReferencePngPath = Path.ChangeExtension(logoReferenceFilePath, ".png");
+        var logoReferencePngPath = Path.ChangeExtension(_logoReferenceFilePath, ".png");
         SaveLogoBoundingVisualization(logoReferencePngPath);
     }
 
@@ -413,12 +423,16 @@ public class LogoDetectionFrameProcessor : IFrameProcessor
             line.Axes.YAxis = plot.Axes.Right;
 
             // Add horizontal threshold line
-            var threshold = plot.Add.HorizontalLine(_settings.logoThreshold);
-            threshold.Color = Colors.Red;
-            threshold.LinePattern = ScottPlot.LinePattern.Dashed;
-            threshold.LineWidth = 2;
-            threshold.LegendText = "Logo Threshold";
-            threshold.Axes.YAxis = plot.Axes.Right;
+            var threshold = _settings.logoThreshold ??_logoReference?.Threshold;
+            if (threshold.HasValue)
+            {
+                var thresholdLine = plot.Add.HorizontalLine(threshold.Value);
+                thresholdLine.Color = Colors.Red;
+                thresholdLine.LinePattern = ScottPlot.LinePattern.Dashed;
+                thresholdLine.LineWidth = 2;
+                thresholdLine.LegendText = "Logo Threshold";
+                thresholdLine.Axes.YAxis = plot.Axes.Right;
+            }
 
             // Configure right Y-axis range based on the data
             // var maxDiff = logoDetections.Max(d => (double)d.LogoDiff);

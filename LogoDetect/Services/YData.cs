@@ -15,12 +15,19 @@ public class YData
     private readonly float[] _floatData;
     private readonly int _width;
     private readonly int _height;
+    private double? _threshold;
     private Rectangle _boundingRect;
 
     public MatrixRowMajor<float> MatrixData => _matrixData;
     public float[] FloatData => _floatData;
     public int Width => _width;
     public int Height => _height;
+
+    public double? Threshold
+    {
+        get => _threshold;
+        set => _threshold = value;
+    }
 
     public Rectangle BoundingRect
     {
@@ -131,10 +138,15 @@ public class YData
             }
             writer.WriteLine(string.Join(",", row));
         }
+        if (_threshold.HasValue)
+        {
+            writer.WriteLine($"Threshold,{_threshold.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}");
+        }
         if (_boundingRect != Rectangle.Empty)
         {
             writer.WriteLine($"BoundingRect,{_boundingRect.X},{_boundingRect.Y},{_boundingRect.Width},{_boundingRect.Height}");
         }
+
         debugFileTracker?.Invoke(path);
     }
 
@@ -174,17 +186,32 @@ public class YData
         var yData = new YData(matrix);
         
         var extraLine = reader.ReadLine();
-        if (!string.IsNullOrEmpty(extraLine))
+        while (!string.IsNullOrEmpty(extraLine))
         {
-            var parts = extraLine.Split(',');
-            if (parts.Length == 5 && parts[0] == "BoundingRect" &&
-                int.TryParse(parts[1], out int x) &&
-                int.TryParse(parts[2], out int y) &&
-                int.TryParse(parts[3], out int w) &&
-                int.TryParse(parts[4], out int h))
+            if (extraLine.StartsWith("Threshold"))
             {
-                yData.BoundingRect = new Rectangle(x, y, w, h);
+                var parts = extraLine.Split(',');
+                if (parts.Length == 2 &&
+                    double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double threshold))
+                {
+                    yData.Threshold = threshold;
+                }
             }
+            else if (extraLine.StartsWith("BoundingRect"))
+            {
+                var parts = extraLine.Split(',');
+                if (parts.Length == 5 &&
+                    int.TryParse(parts[1], out int x) &&
+                    int.TryParse(parts[2], out int y) &&
+                    int.TryParse(parts[3], out int w) &&
+                    int.TryParse(parts[4], out int h))
+                {
+                    yData.BoundingRect = new Rectangle(x, y, w, h);
+                }
+            }
+
+            extraLine = reader.ReadLine();
         }
 
         return yData;

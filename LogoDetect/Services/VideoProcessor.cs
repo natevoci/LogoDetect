@@ -23,7 +23,7 @@ public class VideoProcessorSettings
     public required string inputPath;
     public required string outputPath;
     public required string? outputFilename;
-    public double logoThreshold;
+    public double? logoThreshold;
     public double sceneThreshold;
     public double blankThreshold;
     public TimeSpan minDuration;
@@ -107,6 +107,18 @@ public class VideoProcessor : IDisposable
         sharedPlotManager.SaveCombinedGraph();
         sharedDataManager.SaveCombinedCsv();
 
+        double threshold = 1.0f;
+
+        if (_settings.logoThreshold.HasValue)
+        {
+            threshold = _settings.logoThreshold.Value;
+        }
+        else if (logoDetectionProcessor.LogoReference != null && logoDetectionProcessor.LogoReference.Threshold.HasValue)
+        {
+            threshold = logoDetectionProcessor.LogoReference.Threshold.Value;
+            // TODO: Interactively confirm logo threshold with user
+        }
+
         stopwatch.Stop();
         Console.WriteLine($"\nFrames processed in {stopwatch.Elapsed.TotalSeconds:F1} seconds");
 
@@ -117,7 +129,7 @@ public class VideoProcessor : IDisposable
         var segments = new List<LogoDetect.Models.VideoSegment>();
         try
         {
-            segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, _settings.logoThreshold, _settings.minDuration));
+            segments.AddRange(GenerateSegments(logoDetectionProcessor.Detections, threshold, _settings.minDuration));
             Console.WriteLine($"Generated {segments.Count} segments");
         }
         catch (Exception ex)

@@ -49,10 +49,10 @@ public class Program
             description: "Input video file path (only MP4 works well)")
         { IsRequired = true };
 
-        var logoThresholdOption = new Option<double>(
+        var logoThresholdOption = new Option<double?>(
             name: "--logo-threshold",
             description: "Logo detection threshold (default 1.0)",
-            getDefaultValue: () => 1.0);
+            getDefaultValue: () => null);
 
         var reloadOption = new Option<bool>(
             name: "--reload",
