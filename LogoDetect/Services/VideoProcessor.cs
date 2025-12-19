@@ -143,7 +143,7 @@ public class VideoProcessor : IDisposable
             if (_settings.losslessCut)
             {
                 // Write LLC (LosslessCut) file
-                fullOutputPath = _settings.GetOutputFileWithExtension("-proj.llc");
+                fullOutputPath = _settings.GetOutputFileWithExtension(_settings.outputFilename == null ? "-proj.llc" : ".llc");
                 WriteLosslessCutFile(fullOutputPath, segments);
                 Console.WriteLine($"LLC file written successfully");
             }
