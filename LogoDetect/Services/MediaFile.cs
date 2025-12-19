@@ -128,6 +128,12 @@ public unsafe class MediaFile : IDisposable
             throw new Exception(Marshal.PtrToStringAnsi((IntPtr)buffer) ?? "Unknown FFmpeg error");
         }
 
+        if (hwDecoderName != null)
+        {
+            // Required to fix issue of decoded frames being out of order
+            av_opt_set_int(_codecContext->priv_data, "surfaces", 16, 0);
+        }
+
         var openResult = avcodec_open2(_codecContext, codec, null);
         if (openResult < 0)
         {
@@ -216,12 +222,6 @@ public unsafe class MediaFile : IDisposable
                     sws_scale(_fullSwsContext, _frame->data, _frame->linesize, 0, _frame->height,
                         _fullFloatFrame->data, _fullFloatFrame->linesize);
 
-                        // var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
-                        // Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
-                        // var yDataOld = new YDataOld(yDataBytes, _frame->width, _frame->height, _frame->linesize[0]);
-                        // yDataOld.SaveBitmapToFile("D:\\temp\\logo\\original_frame.png");
-                        // yDataOld.SaveToCSV("D:\\temp\\logo\\original_frame.csv");
-
                     var fullFrameStride = _fullFloatFrame->linesize[0] / sizeof(float);
                     var fullFloatData = new float[fullFrameStride * _fullFloatFrame->height];
                     Marshal.Copy((IntPtr)_fullFloatFrame->data[0], fullFloatData, 0, fullFloatData.Length);
@@ -249,7 +249,18 @@ public unsafe class MediaFile : IDisposable
                     _currentTimestamp = (long)(_currentTimestamp * tbn.num / (double)tbn.den * AV_TIME_BASE);
 
                     av_packet_unref(_packet);
-                    return new Frame(yData, quarterYData, _currentTimestamp - _frameZeroTimestamp);
+                    var frame = new Frame(yData, quarterYData, _currentTimestamp - _frameZeroTimestamp);
+
+                        // var filename = System.IO.Path.Combine("d:\\temp\\logo", $"img {frame.TimeSpan.TotalSeconds:F3}.png");
+                        // // yData.SaveBitmapToFile(filename);
+
+                        // var yDataBytes = new byte[_frame->linesize[0] * _frame->height];
+                        // Marshal.Copy((IntPtr)_frame->data[0], yDataBytes, 0, yDataBytes.Length);
+                        // var yDataOld = new YDataOld(yDataBytes, _frame->width, _frame->height, _frame->linesize[0]);
+                        // yDataOld.SaveBitmapToFile(filename);
+                        // // yDataOld.SaveToCSV("D:\\temp\\logo\\original_frame.csv");
+
+                    return frame;
                 }
                 av_packet_unref(_packet);
             }

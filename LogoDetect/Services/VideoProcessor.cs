@@ -70,6 +70,15 @@ public class VideoProcessor : IDisposable
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
+                // Code to test raw decoding of frames
+                // var duration = _mediaFile.GetDuration();
+
+                // var frame = _mediaFile.GetFrameAtTimeSpan(TimeSpan.Zero);
+                // for (int i = 0; i < _settings.maxFramesToProcess; i++) {
+                //     frame = _mediaFile.ReadNextFrame(false);
+                // }
+                // breakpoint here
+
         var logoDetectionProcessor = new LogoDetectionFrameProcessor(_settings, _mediaFile, _imageProcessor);
         var sceneChangeProcessor = new SceneChangeFrameProcessor(_settings, _mediaFile, _imageProcessor, _performanceTracker);
 
