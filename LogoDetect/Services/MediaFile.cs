@@ -149,15 +149,25 @@ public unsafe class MediaFile : IDisposable
 
     private void InitializeScalingContext()
     {
-        var quarterWidth = _codecContext->width / 4;
-        var quarterHeight = _codecContext->height / 4;
+        var origWidth = _codecContext->width;
+        var origHeight = _codecContext->height;
 
+        var fullWidth = origWidth;
+        var fullHeight = origHeight;
+        while (fullWidth > 1280)
+        {
+            fullWidth /= 2;
+            fullHeight /= 2;
+        }
+
+        var quarterWidth = fullWidth / 4;
+        var quarterHeight = fullHeight / 4;
 
 
         // Create full-size float conversion context
         _fullSwsContext = sws_getContext(
-            _codecContext->width, _codecContext->height, _codecContext->pix_fmt,
-            _codecContext->width, _codecContext->height, AVPixelFormat.AV_PIX_FMT_GRAYF32LE,
+            origWidth, origHeight, _codecContext->pix_fmt,
+            fullWidth, fullHeight, AVPixelFormat.AV_PIX_FMT_GRAYF32LE,
             SWS_FAST_BILINEAR, null, null, null);
 
         if (_fullSwsContext == null)
@@ -167,21 +177,20 @@ public unsafe class MediaFile : IDisposable
 
         // Setup full float frame
         _fullFloatFrame->format = (int)AVPixelFormat.AV_PIX_FMT_GRAYF32LE;
-        _fullFloatFrame->width = _codecContext->width;
-        _fullFloatFrame->height = _codecContext->height;
+        _fullFloatFrame->width = fullWidth;
+        _fullFloatFrame->height = fullHeight;
 
         var fullBufferSize = av_image_get_buffer_size(AVPixelFormat.AV_PIX_FMT_GRAYF32LE, 
-            _codecContext->width, _codecContext->height, 1);
+            fullWidth, fullHeight, 1);
         var fullBuffer = (byte*)av_malloc((ulong)fullBufferSize);
         
         _fullFloatFrame->data[0] = fullBuffer;
-        _fullFloatFrame->linesize[0] = _codecContext->width * sizeof(float);
-
+        _fullFloatFrame->linesize[0] = fullWidth * sizeof(float);
 
 
         // Create quarter-size float conversion context
         _quarterSwsContext = sws_getContext(
-            _codecContext->width, _codecContext->height, _codecContext->pix_fmt,
+            origWidth, origHeight, _codecContext->pix_fmt,
             quarterWidth, quarterHeight, AVPixelFormat.AV_PIX_FMT_GRAYF32LE,
             SWS_BILINEAR, null, null, null);
 
